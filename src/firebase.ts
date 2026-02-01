@@ -21,8 +21,9 @@ const app = initializeApp(firebaseConfig);
 const database = getDatabase(app);
 const playersRef = ref(database, 'players');
 const bulletsRef = ref(database, 'bullets');
+const hitsRef = ref(database, 'hits');
 
-const players: { [key: string]: Group } = {};
+export const players: { [key: string]: Group } = {};
 let playerId: string;
 let playerRef: DatabaseReference;
 
@@ -36,6 +37,10 @@ export function initMultiplayer(playerAirplane: Group) {
     });
 
     onDisconnect(playerRef).remove();
+
+    // Clean up old hits and bullets on start
+    set(hitsRef, {});
+    set(bulletsRef, {});
 
     onChildAdded(playersRef, (snapshot) => {
         if (snapshot.key === playerId) return;
@@ -67,6 +72,11 @@ export function initMultiplayer(playerAirplane: Group) {
     });
 }
 
+export function getPlayerId() {
+    return playerId;
+}
+
+
 export function updatePlayerPosition(playerAirplane: Group) {
     if (playerRef) {
         set(playerRef, {
@@ -90,5 +100,16 @@ export function onBulletFired(callback: (data: any) => void) {
         if (data.playerId !== playerId) {
             callback(data);
         }
+    });
+}
+
+export function reportHit(victimId: string) {
+    push(hitsRef, { victimId });
+}
+
+export function onPlayerHit(callback: (victimId: string) => void) {
+    onChildAdded(hitsRef, (snapshot) => {
+        const data = snapshot.val();
+        callback(data.victimId);
     });
 }
