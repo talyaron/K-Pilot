@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 
-export function createAirplane() {
+export function createAirplane(): THREE.Group {
     const airplane = new THREE.Group();
 
     // Body

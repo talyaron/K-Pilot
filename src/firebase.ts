@@ -1,7 +1,7 @@
-import { initializeApp } from 'firebase/app';
-import { getDatabase, ref, onChildAdded, onChildChanged, onChildRemoved, onDisconnect, set } from 'firebase/database';
-import { scene } from './scene.js';
-import { createAirplane } from './airplane.js';
+import { getDatabase, ref, onChildAdded, onChildChanged, onChildRemoved, onDisconnect, set, push, DatabaseReference } from 'firebase/database';
+import { Group, Quaternion, Vector3 } from 'three';
+import { scene } from './scene.ts';
+import { createAirplane } from './airplane.ts';
 
 // Your web app's Firebase configuration
 const firebaseConfig = {
@@ -16,15 +16,17 @@ const firebaseConfig = {
 };
 
 // Initialize Firebase
+import { initializeApp } from 'firebase/app';
 const app = initializeApp(firebaseConfig);
 const database = getDatabase(app);
 const playersRef = ref(database, 'players');
+const bulletsRef = ref(database, 'bullets');
 
-const players = {};
-let playerId;
-let playerRef;
+const players: { [key: string]: Group } = {};
+let playerId: string;
+let playerRef: DatabaseReference;
 
-export function initMultiplayer(playerAirplane) {
+export function initMultiplayer(playerAirplane: Group) {
     playerId = Math.random().toString(36).substring(7);
     playerRef = ref(database, 'players/' + playerId);
 
@@ -32,7 +34,7 @@ export function initMultiplayer(playerAirplane) {
         position: playerAirplane.position.toArray(),
         rotation: playerAirplane.rotation.toArray(),
     });
-    
+
     onDisconnect(playerRef).remove();
 
     onChildAdded(playersRef, (snapshot) => {
@@ -65,11 +67,28 @@ export function initMultiplayer(playerAirplane) {
     });
 }
 
-export function updatePlayerPosition(playerAirplane) {
+export function updatePlayerPosition(playerAirplane: Group) {
     if (playerRef) {
         set(playerRef, {
             position: playerAirplane.position.toArray(),
             rotation: playerAirplane.rotation.toArray(),
         });
     }
+}
+
+export function fireBullet(position: Vector3, quaternion: Quaternion) {
+    push(bulletsRef, {
+        playerId,
+        position: position.toArray(),
+        quaternion: quaternion.toArray(),
+    });
+}
+
+export function onBulletFired(callback: (data: any) => void) {
+    onChildAdded(bulletsRef, (snapshot) => {
+        const data = snapshot.val();
+        if (data.playerId !== playerId) {
+            callback(data);
+        }
+    });
 }
