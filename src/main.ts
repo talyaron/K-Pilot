@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import './style.css';
-import { scene, renderer, camera, asteroids } from './scene.ts';
+import { scene, renderer, camera, asteroids, towers, platforms, sun, planet } from './scene.ts';
 import { createAirplane } from './airplane.ts';
 import { keys, getRollDirection, resetRollDirection } from './controls.ts';
 import { initMultiplayer, updatePlayerPosition, fireBullet, onBulletFired } from './firebase.ts';
@@ -43,6 +43,116 @@ const deathScreen = document.getElementById('death-screen') as HTMLElement;
 // Health system
 let playerHealth = 100;
 const maxHealth = 100;
+let killCount = 0;
+
+// HUD Elements
+const killsElement = document.getElementById('kills') as HTMLElement;
+const healthBarFill = document.getElementById('health-bar-fill') as HTMLElement;
+const healthText = document.getElementById('health-text') as HTMLElement;
+
+// Radar
+const radarCanvas = document.getElementById('radar') as HTMLCanvasElement;
+const radarCtx = radarCanvas.getContext('2d')!;
+const radarRadius = 100;
+const radarRange = 300; // Units in game world
+let lastRadarUpdate = 0;
+
+// Sound System
+const audioContext = new AudioContext();
+
+function playEngineSound() {
+    const oscillator = audioContext.createOscillator();
+    const gainNode = audioContext.createGain();
+
+    oscillator.connect(gainNode);
+    gainNode.connect(audioContext.destination);
+
+    oscillator.frequency.value = 80 + (speedBoostActive ? 40 : 0);
+    oscillator.type = 'sawtooth';
+
+    gainNode.gain.setValueAtTime(0.05, audioContext.currentTime);
+    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.1);
+
+    oscillator.start(audioContext.currentTime);
+    oscillator.stop(audioContext.currentTime + 0.1);
+}
+
+function playShootSound() {
+    const oscillator = audioContext.createOscillator();
+    const gainNode = audioContext.createGain();
+
+    oscillator.connect(gainNode);
+    gainNode.connect(audioContext.destination);
+
+    oscillator.frequency.setValueAtTime(800, audioContext.currentTime);
+    oscillator.frequency.exponentialRampToValueAtTime(100, audioContext.currentTime + 0.1);
+    oscillator.type = 'square';
+
+    gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.1);
+
+    oscillator.start(audioContext.currentTime);
+    oscillator.stop(audioContext.currentTime + 0.15);
+}
+
+function playExplosionSound() {
+    // Explosion base
+    const noise = audioContext.createBufferSource();
+    const buffer = audioContext.createBuffer(1, audioContext.sampleRate * 0.5, audioContext.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < buffer.length; i++) {
+        data[i] = Math.random() * 2 - 1;
+    }
+    noise.buffer = buffer;
+
+    const noiseFilter = audioContext.createBiquadFilter();
+    noiseFilter.type = 'lowpass';
+    noiseFilter.frequency.value = 1000;
+
+    const noiseGain = audioContext.createGain();
+    noiseGain.gain.setValueAtTime(0.5, audioContext.currentTime);
+    noiseGain.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
+
+    noise.connect(noiseFilter);
+    noiseFilter.connect(noiseGain);
+    noiseGain.connect(audioContext.destination);
+
+    // Low rumble
+    const oscillator = audioContext.createOscillator();
+    oscillator.frequency.setValueAtTime(100, audioContext.currentTime);
+    oscillator.frequency.exponentialRampToValueAtTime(20, audioContext.currentTime + 0.5);
+    oscillator.type = 'sine';
+
+    const oscGain = audioContext.createGain();
+    oscGain.gain.setValueAtTime(0.3, audioContext.currentTime);
+    oscGain.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
+
+    oscillator.connect(oscGain);
+    oscGain.connect(audioContext.destination);
+
+    noise.start(audioContext.currentTime);
+    oscillator.start(audioContext.currentTime);
+    noise.stop(audioContext.currentTime + 0.5);
+    oscillator.stop(audioContext.currentTime + 0.5);
+}
+
+function playRollSound() {
+    const oscillator = audioContext.createOscillator();
+    const gainNode = audioContext.createGain();
+
+    oscillator.connect(gainNode);
+    gainNode.connect(audioContext.destination);
+
+    oscillator.frequency.setValueAtTime(400, audioContext.currentTime);
+    oscillator.frequency.linearRampToValueAtTime(600, audioContext.currentTime + 0.3);
+    oscillator.type = 'sine';
+
+    gainNode.gain.setValueAtTime(0.15, audioContext.currentTime);
+    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3);
+
+    oscillator.start(audioContext.currentTime);
+    oscillator.stop(audioContext.currentTime + 0.3);
+}
 
 // Particle systems
 interface Particle {
@@ -97,6 +207,83 @@ function updateHealthBar(healthBarGroup: THREE.Group, health: number, maxHealth:
     } else {
         material.color.setHex(0xff6600);
     }
+}
+
+// Update HUD
+function updateHUD() {
+    // Update kill count
+    killsElement.textContent = killCount.toString();
+
+    // Update health bar
+    const healthPercent = (playerHealth / maxHealth) * 100;
+    healthBarFill.style.width = healthPercent + '%';
+    healthText.textContent = Math.ceil(playerHealth).toString();
+
+    // Change health bar color
+    if (healthPercent > 60) {
+        healthBarFill.style.background = 'linear-gradient(90deg, #00ff00, #00ff00)';
+    } else if (healthPercent > 30) {
+        healthBarFill.style.background = 'linear-gradient(90deg, #ffff00, #ffaa00)';
+    } else {
+        healthBarFill.style.background = 'linear-gradient(90deg, #ff6600, #ff0000)';
+    }
+}
+
+// Draw radar
+function updateRadar(otherPlayers: Map<string, THREE.Group>) {
+    const currentTime = Date.now();
+
+    // Clear canvas
+    radarCtx.clearRect(0, 0, radarCanvas.width, radarCanvas.height);
+
+    // Draw center dot (player)
+    radarCtx.fillStyle = '#00ffff';
+    radarCtx.beginPath();
+    radarCtx.arc(radarRadius, radarRadius, 4, 0, Math.PI * 2);
+    radarCtx.fill();
+
+    // Draw range circles
+    radarCtx.strokeStyle = 'rgba(0, 255, 255, 0.2)';
+    radarCtx.lineWidth = 1;
+    for (let i = 1; i <= 3; i++) {
+        radarCtx.beginPath();
+        radarCtx.arc(radarRadius, radarRadius, (radarRadius / 3) * i, 0, Math.PI * 2);
+        radarCtx.stroke();
+    }
+
+    // Update every 3 seconds (radar sweep)
+    if (currentTime - lastRadarUpdate > 3000) {
+        lastRadarUpdate = currentTime;
+    }
+
+    // Draw other players within range
+    otherPlayers.forEach((otherPlayer) => {
+        const dx = otherPlayer.position.x - playerAirplane.position.x;
+        const dz = otherPlayer.position.z - playerAirplane.position.z;
+        const distance = Math.sqrt(dx * dx + dz * dz);
+
+        if (distance < radarRange) {
+            // Calculate position on radar
+            const scale = radarRadius / radarRange;
+            const radarX = radarRadius + dx * scale;
+            const radarY = radarRadius + dz * scale;
+
+            // Draw enemy blip
+            radarCtx.fillStyle = '#ff0000';
+            radarCtx.beginPath();
+            radarCtx.arc(radarX, radarY, 3, 0, Math.PI * 2);
+            radarCtx.fill();
+
+            // Add pulsing effect
+            if ((currentTime % 1000) < 500) {
+                radarCtx.strokeStyle = 'rgba(255, 0, 0, 0.5)';
+                radarCtx.lineWidth = 2;
+                radarCtx.beginPath();
+                radarCtx.arc(radarX, radarY, 5, 0, Math.PI * 2);
+                radarCtx.stroke();
+            }
+        }
+    });
 }
 
 // Spawn engine trail particle
@@ -171,7 +358,7 @@ function respawnPlayer() {
 
 // Check if player crashed
 function checkCollision(): boolean {
-    // Check if plane is too close to ground (y < 0.5) or any structure
+    // Check if plane is too close to ground (y < 0.5)
     if (playerAirplane.position.y < 0.5) {
         return true;
     }
@@ -179,6 +366,47 @@ function checkCollision(): boolean {
     if (playerHealth <= 0) {
         return true;
     }
+
+    const playerPos = playerAirplane.position;
+    const collisionRadius = 5; // Airplane collision radius
+
+    // Check collision with asteroids
+    for (const asteroid of asteroids) {
+        const distance = playerPos.distanceTo(asteroid.position);
+        const asteroidRadius = asteroid.geometry.parameters.radius || 5;
+        if (distance < collisionRadius + asteroidRadius) {
+            return true;
+        }
+    }
+
+    // Check collision with towers
+    for (const tower of towers) {
+        const distance = playerPos.distanceTo(tower.position);
+        if (distance < collisionRadius + 3 && playerPos.y < 40) { // Tower collision
+            return true;
+        }
+    }
+
+    // Check collision with platforms
+    for (const platform of platforms) {
+        const distance = playerPos.distanceTo(platform.position);
+        if (distance < collisionRadius + 8 && Math.abs(playerPos.y - platform.position.y) < 2) {
+            return true;
+        }
+    }
+
+    // Check collision with sun
+    const sunDistance = playerPos.distanceTo(sun.position);
+    if (sunDistance < collisionRadius + 10) {
+        return true;
+    }
+
+    // Check collision with planet
+    const planetDistance = playerPos.distanceTo(planet.position);
+    if (planetDistance < collisionRadius + 32) {
+        return true;
+    }
+
     return false;
 }
 
@@ -193,7 +421,8 @@ function animate() {
             respawnPlayer();
         }
         // Update camera even when dead
-        const a = (new THREE.Vector3(0, 2, 5)).applyQuaternion(playerAirplane.quaternion).add(playerAirplane.position);
+        const cameraOffset = new THREE.Vector3(0, 8, 20);
+        const a = cameraOffset.applyQuaternion(playerAirplane.quaternion).add(playerAirplane.position);
         camera.position.copy(a);
         camera.lookAt(playerAirplane.position);
         renderer.render(scene, camera);
@@ -205,6 +434,7 @@ function animate() {
         isDead = true;
         respawnTimer = 180; // 3 seconds at 60fps
         deathScreen.classList.add('show');
+        playExplosionSound();
         return;
     }
 
@@ -228,6 +458,11 @@ function animate() {
 
     // Always move forward with smooth speed
     playerAirplane.translateZ(-currentSpeed);
+
+    // Play engine sound periodically
+    if (Math.random() < 0.02) { // 2% chance per frame for continuous engine hum
+        playEngineSound();
+    }
 
     // Smooth rotation
     let rotationInput = 0;
@@ -255,6 +490,7 @@ function animate() {
         rollTargetDirection = currentRollDirection;
         rollProgress = 0;
         resetRollDirection(); // Reset after starting roll
+        playRollSound();
     }
 
     if (isRolling) {
@@ -338,6 +574,7 @@ function animate() {
         fireCooldown = 30; // 30 frames cooldown
         spawnBullet(playerAirplane.position, playerAirplane.quaternion);
         fireBullet(playerAirplane.position, playerAirplane.quaternion);
+        playShootSound();
     }
 
     if (fireCooldown > 0) {
@@ -399,8 +636,9 @@ function animate() {
     // Update firebase with new position
     updatePlayerPosition(playerAirplane);
 
-    // Update camera to follow player
-    const a = (new THREE.Vector3(0, 2, 5)).applyQuaternion(playerAirplane.quaternion).add(playerAirplane.position)
+    // Update camera to follow player - zoomed out third-person view
+    const cameraOffset = new THREE.Vector3(0, 8, 20); // Much further back and higher
+    const a = cameraOffset.applyQuaternion(playerAirplane.quaternion).add(playerAirplane.position);
     camera.position.copy(a);
     camera.lookAt(playerAirplane.position);
 
@@ -409,6 +647,10 @@ function animate() {
     playerHealthBar.position.y += 4;
     playerHealthBar.lookAt(camera.position);
     updateHealthBar(playerHealthBar, playerHealth, maxHealth);
+
+    // Update HUD and Radar
+    updateHUD();
+    updateRadar(new Map()); // TODO: Pass actual other players from multiplayer
 
     renderer.render(scene, camera);
 }

@@ -7,10 +7,29 @@
     <link rel="stylesheet" href="/src/style.css">
 </head>
 <body>
+    <!-- Death Screen -->
     <div id="death-screen">
         <h1>YOU DIED</h1>
         <p>Respawning...</p>
     </div>
+
+    <!-- HUD - Top Left -->
+    <div id="hud">
+        <div id="kill-count">KILLS: <span id="kills">0</span></div>
+        <div id="health-display">
+            <div id="health-bar-container">
+                <div id="health-bar-fill"></div>
+            </div>
+            <span id="health-text">100</span>
+        </div>
+    </div>
+
+    <!-- Radar - Bottom Right -->
+    <div id="radar-container">
+        <canvas id="radar" width="200" height="200"></canvas>
+        <div id="radar-sweep"></div>
+    </div>
+
     <script type="module" src="/src/main.ts"></script>
 </body>
 </html>

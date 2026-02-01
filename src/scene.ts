@@ -1,5 +1,12 @@
 import * as THREE from 'three';
 
+// Collidable objects - declare at top
+export const towers: THREE.Group[] = [];
+export const platforms: THREE.Mesh[] = [];
+export const asteroids: THREE.Mesh[] = [];
+export let sun: THREE.Mesh;
+export let planet: THREE.Mesh;
+
 // Scene
 export const scene: THREE.Scene = new THREE.Scene();
 
@@ -46,14 +53,14 @@ const planetMaterial = new THREE.MeshStandardMaterial({
     emissive: 0x1a2a3a,
     emissiveIntensity: 0.3
 });
-const planet = new THREE.Mesh(planetGeometry, planetMaterial);
+planet = new THREE.Mesh(planetGeometry, planetMaterial);
 planet.position.set(-200, 100, -400);
 scene.add(planet);
 
 // Bright star/sun
 const sunGeometry = new THREE.SphereGeometry(8, 32, 32);
 const sunMaterial = new THREE.MeshBasicMaterial({ color: 0xFFFFFF });
-const sun = new THREE.Mesh(sunGeometry, sunMaterial);
+sun = new THREE.Mesh(sunGeometry, sunMaterial);
 sun.position.set(150, 120, -300);
 scene.add(sun);
 
@@ -172,6 +179,7 @@ for (let i = 0; i < 20; i++) {
     towerGroup.position.x = (Math.random() - 0.5) * 2000;
     towerGroup.position.z = (Math.random() - 0.5) * 2000;
 
+    towers.push(towerGroup);
     scene.add(towerGroup);
 }
 
@@ -194,6 +202,7 @@ for (let i = 0; i < 15; i++) {
     platform.castShadow = true;
     platform.receiveShadow = true;
 
+    platforms.push(platform);
     scene.add(platform);
 
     // Add bright underglow
@@ -210,7 +219,6 @@ for (let i = 0; i < 15; i++) {
 }
 
 // Moving Asteroids
-export const asteroids: THREE.Mesh[] = [];
 for (let i = 0; i < 30; i++) {
     const size = Math.random() * 8 + 3;
     const asteroidGeometry = new THREE.DodecahedronGeometry(size, 0);
