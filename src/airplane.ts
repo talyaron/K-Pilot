@@ -2,6 +2,7 @@ import * as THREE from 'three';
 
 export function createAirplane(): THREE.Group {
     const airplane = new THREE.Group();
+    airplane.scale.set(2.5, 2.5, 2.5); // Make airplane 2.5x bigger
 
     // Body
     const bodyGeometry = new THREE.BoxGeometry(1, 0.5, 2);
