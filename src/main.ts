@@ -1,9 +1,9 @@
 import * as THREE from 'three';
 import './style.css';
 import { scene, renderer, camera, asteroids, towers, platforms, sun, planet } from './scene.ts';
-import { createAirplane } from './airplane.ts';
+import { loadAirplane } from './planeLoader.ts';
 import { keys, getRollDirection, resetRollDirection } from './controls.ts';
-import { initMultiplayer, updatePlayerPosition, fireBullet, onBulletFired } from './firebase.ts';
+import { initMultiplayer, updatePlayerPosition, fireBullet, onBulletFired, reportHit, onPlayerHit, getPlayerId, players } from './firebase.ts';
 import { createBullet } from './bullet.ts';
 
 interface Bullet {
@@ -162,10 +162,8 @@ interface Particle {
 }
 const engineParticles: Particle[] = [];
 
-// Player's airplane
-const playerAirplane: THREE.Group = createAirplane();
-playerAirplane.position.y = 20; // Start higher to avoid immediate collision
-scene.add(playerAirplane);
+// Player's airplane (will be loaded asynchronously)
+let playerAirplane: THREE.Group;
 
 // Create health bar for player
 function createHealthBar(): THREE.Group {
@@ -314,8 +312,14 @@ function spawnEngineParticle() {
     scene.add(particle);
 }
 
-// Initialize multiplayer
-initMultiplayer(playerAirplane);
+// Handle player hits from other players
+function handlePlayerHit(victimId: string) {
+    if (victimId === getPlayerId()) {
+        // We got hit!
+        playerHealth -= 20; // 20 damage per hit
+        if (playerHealth < 0) playerHealth = 0;
+    }
+}
 
 function spawnBullet(initialPosition: THREE.Vector3, initialQuaternion: THREE.Quaternion) {
     const bulletMesh = createBullet();
@@ -358,8 +362,10 @@ function respawnPlayer() {
 
 // Check if player crashed
 function checkCollision(): boolean {
-    // Check if plane is too close to ground (y < 0.5)
-    if (playerAirplane.position.y < 0.5) {
+    if (!playerAirplane) return false;
+
+    // Check if plane is too close to ground (y < 2)
+    if (playerAirplane.position.y < 2) {
         return true;
     }
     // Check if health depleted
@@ -368,12 +374,12 @@ function checkCollision(): boolean {
     }
 
     const playerPos = playerAirplane.position;
-    const collisionRadius = 5; // Airplane collision radius
+    const collisionRadius = 3; // Airplane collision radius
 
     // Check collision with asteroids
     for (const asteroid of asteroids) {
         const distance = playerPos.distanceTo(asteroid.position);
-        const asteroidRadius = asteroid.geometry.parameters.radius || 5;
+        const asteroidRadius = (asteroid.geometry as THREE.DodecahedronGeometry).parameters.radius || 5;
         if (distance < collisionRadius + asteroidRadius) {
             return true;
         }
@@ -382,28 +388,34 @@ function checkCollision(): boolean {
     // Check collision with towers
     for (const tower of towers) {
         const distance = playerPos.distanceTo(tower.position);
-        if (distance < collisionRadius + 3 && playerPos.y < 40) { // Tower collision
+        // Towers are tall cylinders, check if within radius and below max height
+        if (distance < collisionRadius + 5 && playerPos.y < 50) {
             return true;
         }
     }
 
     // Check collision with platforms
     for (const platform of platforms) {
-        const distance = playerPos.distanceTo(platform.position);
-        if (distance < collisionRadius + 8 && Math.abs(playerPos.y - platform.position.y) < 2) {
+        const dx = playerPos.x - platform.position.x;
+        const dy = playerPos.y - platform.position.y;
+        const dz = playerPos.z - platform.position.z;
+        const horizontalDistance = Math.sqrt(dx * dx + dz * dz);
+
+        // Check if within platform bounds
+        if (horizontalDistance < 10 && Math.abs(dy) < 2) {
             return true;
         }
     }
 
     // Check collision with sun
     const sunDistance = playerPos.distanceTo(sun.position);
-    if (sunDistance < collisionRadius + 10) {
+    if (sunDistance < collisionRadius + 12) {
         return true;
     }
 
     // Check collision with planet
     const planetDistance = playerPos.distanceTo(planet.position);
-    if (planetDistance < collisionRadius + 32) {
+    if (planetDistance < collisionRadius + 35) {
         return true;
     }
 
@@ -413,6 +425,12 @@ function checkCollision(): boolean {
 // Animation loop
 function animate() {
     requestAnimationFrame(animate);
+
+    // Wait for airplane to load
+    if (!playerAirplane) {
+        renderer.render(scene, camera);
+        return;
+    }
 
     // Handle death and respawn
     if (isDead) {
@@ -587,7 +605,19 @@ function animate() {
         bullet.mesh.position.add(bullet.velocity);
         bullet.lifetime--;
 
-        if (bullet.lifetime <= 0) {
+        // Check collision with other players
+        let hitDetected = false;
+        for (const [playerId, otherPlayer] of Object.entries(players)) {
+            const distance = bullet.mesh.position.distanceTo(otherPlayer.position);
+            if (distance < 5) { // Collision radius
+                reportHit(playerId);
+                hitDetected = true;
+                killCount++;
+                break;
+            }
+        }
+
+        if (hitDetected || bullet.lifetime <= 0) {
             scene.remove(bullet.mesh);
             bullets.splice(i, 1);
         }
@@ -650,9 +680,31 @@ function animate() {
 
     // Update HUD and Radar
     updateHUD();
-    updateRadar(new Map()); // TODO: Pass actual other players from multiplayer
+    // Convert players object to Map for radar
+    const playersMap = new Map<string, THREE.Group>();
+    Object.entries(players).forEach(([id, player]) => {
+        playersMap.set(id, player);
+    });
+    updateRadar(playersMap);
 
     renderer.render(scene, camera);
 }
 
-animate();
+// Initialize game
+async function initGame() {
+    // Load airplane model
+    playerAirplane = await loadAirplane();
+    playerAirplane.position.y = 20; // Start higher to avoid immediate collision
+    scene.add(playerAirplane);
+
+    // Initialize multiplayer
+    initMultiplayer(playerAirplane);
+
+    // Listen for hits
+    onPlayerHit(handlePlayerHit);
+
+    // Start game loop
+    animate();
+}
+
+initGame();
