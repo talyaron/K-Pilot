@@ -1,7 +1,7 @@
 import { getDatabase, ref, onChildAdded, onChildChanged, onChildRemoved, onDisconnect, set, push, DatabaseReference } from 'firebase/database';
 import { Group, Quaternion, Vector3 } from 'three';
 import { scene } from './scene.ts';
-import { createAirplane } from './airplane.ts';
+import { loadAirplane } from './planeLoader.ts';
 
 // Your web app's Firebase configuration
 const firebaseConfig = {
@@ -42,13 +42,13 @@ export function initMultiplayer(playerAirplane: Group) {
     set(hitsRef, {});
     set(bulletsRef, {});
 
-    onChildAdded(playersRef, (snapshot) => {
+    onChildAdded(playersRef, async (snapshot) => {
         if (snapshot.key === playerId) return;
         const data = snapshot.val();
-        const newPlayer = createAirplane();
+        const newPlayer = await loadAirplane();
         newPlayer.position.fromArray(data.position);
         newPlayer.rotation.fromArray(data.rotation);
-        players[snapshot.key] = newPlayer;
+        players[snapshot.key!] = newPlayer;
         scene.add(newPlayer);
     });
 
