@@ -1,8 +1,62 @@
 body {
     margin: 0;
     overflow: hidden;
+    font-family: 'Arial', sans-serif;
 }
 
 canvas {
     display: block;
+}
+
+#death-screen {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background-color: rgba(40, 40, 40, 0.95);
+    display: none;
+    justify-content: center;
+    align-items: center;
+    flex-direction: column;
+    z-index: 1000;
+    animation: fadeIn 0.5s ease-in;
+}
+
+#death-screen.show {
+    display: flex;
+}
+
+#death-screen h1 {
+    color: #ff4444;
+    font-size: 72px;
+    margin: 0;
+    text-shadow: 0 0 20px rgba(255, 68, 68, 0.8);
+    animation: pulse 1.5s ease-in-out infinite;
+}
+
+#death-screen p {
+    color: #cccccc;
+    font-size: 24px;
+    margin-top: 20px;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
+}
+
+@keyframes pulse {
+    0%, 100% {
+        transform: scale(1);
+        opacity: 1;
+    }
+    50% {
+        transform: scale(1.05);
+        opacity: 0.8;
+    }
 }
