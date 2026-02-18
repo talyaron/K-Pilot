@@ -61,65 +61,6 @@ canvas {
     }
 }
 
-/* Crosshair */
-#crosshair {
-    position: fixed;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    z-index: 100;
-    pointer-events: none;
-}
-
-.crosshair-line {
-    position: absolute;
-    background: rgba(0, 255, 255, 0.8);
-}
-
-.crosshair-top {
-    width: 2px;
-    height: 14px;
-    left: 50%;
-    transform: translateX(-50%);
-    bottom: 10px;
-}
-
-.crosshair-bottom {
-    width: 2px;
-    height: 14px;
-    left: 50%;
-    transform: translateX(-50%);
-    top: 10px;
-}
-
-.crosshair-left {
-    height: 2px;
-    width: 14px;
-    top: 50%;
-    transform: translateY(-50%);
-    right: 10px;
-}
-
-.crosshair-right {
-    height: 2px;
-    width: 14px;
-    top: 50%;
-    transform: translateY(-50%);
-    left: 10px;
-}
-
-.crosshair-dot {
-    position: absolute;
-    width: 4px;
-    height: 4px;
-    background: #ff3333;
-    border-radius: 50%;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    box-shadow: 0 0 6px rgba(255, 50, 50, 0.8);
-}
-
 /* HUD - Top Left */
 #hud {
     position: fixed;
