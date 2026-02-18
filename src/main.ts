@@ -481,12 +481,12 @@ function animate() {
     }
 
     const baseSpeed = 0.1;
-    const boostedSpeed = 0.35; // Much faster boost speed
-    const rotationAcceleration = 0.0008; // Much slower rotation buildup
-    const maxRotationSpeed = 0.025; // Lower max rotation speed for precision
-    const pitchAcceleration = 0.0003; // Slower pitch buildup
-    const maxPitchSpeed = 0.015; // Lower max pitch speed
-    const damping = 0.92; // Slightly less damping for smoother feel
+    const boostedSpeed = 0.35;
+    const rotationAcceleration = 0.0006;
+    const maxRotationSpeed = 0.02;
+    const pitchAcceleration = 0.0003;
+    const maxPitchSpeed = 0.012;
+    const damping = 0.96; // Higher damping = smoother, slower deceleration
 
     // Handle Z key toggle for speed boost
     if (keys['KeyZ'] && !lastZKeyState) {
@@ -496,7 +496,7 @@ function animate() {
 
     // Smooth speed transition
     targetSpeed = speedBoostActive ? boostedSpeed : baseSpeed;
-    currentSpeed += (targetSpeed - currentSpeed) * 0.1;
+    currentSpeed += (targetSpeed - currentSpeed) * 0.04; // Smoother speed transition
 
     // Always move forward with smooth speed
     playerAirplane.translateZ(-currentSpeed);
@@ -542,28 +542,26 @@ function animate() {
     currentRotationVelocity *= damping;
     currentRotationVelocity = Math.max(-maxRotationSpeed, Math.min(maxRotationSpeed, currentRotationVelocity));
 
-    if (Math.abs(currentRotationVelocity) > 0.001) {
+    if (Math.abs(currentRotationVelocity) > 0.0005) {
         playerAirplane.rotateY(currentRotationVelocity);
     }
 
-    // Banking: tilt the plane sideways when turning with A/D
-    const targetBank = -rotationInput * maxBankAngle;
-    currentBankAngle += (targetBank - currentBankAngle) * bankSpeed * 3;
-    // Slowly return to 0 when not turning
-    if (rotationInput === 0) {
-        currentBankAngle *= 0.95;
-    }
-    if (Math.abs(currentBankAngle) > 0.001) {
-        playerAirplane.rotateZ(currentBankAngle * 0.1);
+    // Banking: apply as absolute angle on the INNER model (not the airplane group)
+    // This prevents accumulation - it's purely visual tilt
+    const innerModel = playerAirplane.children[0];
+    if (innerModel) {
+        const targetBank = rotationInput * maxBankAngle; // Positive = tilt into turn
+        currentBankAngle += (targetBank - currentBankAngle) * 0.05; // Smooth lerp
+        if (Math.abs(currentBankAngle) < 0.001) currentBankAngle = 0;
+        innerModel.rotation.z = currentBankAngle; // Absolute, not incremental
     }
 
     // Execute vertical flip (Q key) - elegant slow loop
     if (isFlipping) {
-        const flipSpeed = 0.04; // Slow elegant flip
+        const flipSpeed = 0.035;
         playerAirplane.rotateX(flipSpeed);
         flipProgress += flipSpeed;
 
-        // Complete after 180 degrees (PI)
         if (flipProgress >= Math.PI) {
             isFlipping = false;
             isStabilizing = true;
@@ -571,12 +569,11 @@ function animate() {
     }
     // Execute barrel roll (mouse click) - slower and elegant
     else if (isRolling) {
-        const rollSpeed = 0.05; // Slower elegant roll
+        const rollSpeed = 0.045;
         const rollAmount = rollTargetDirection === 'left' ? rollSpeed : -rollSpeed;
         playerAirplane.rotateZ(rollAmount);
         rollProgress += rollSpeed;
 
-        // Complete roll after 360 degrees (2 * PI)
         if (rollProgress >= Math.PI * 2) {
             isRolling = false;
             isStabilizing = true;
@@ -732,10 +729,10 @@ function animate() {
     // Update firebase with new position and health
     updatePlayerPosition(playerAirplane, playerHealth);
 
-    // Update camera to follow player - zoomed out third-person view
-    const cameraOffset = new THREE.Vector3(0, 8, 20); // Much further back and higher
-    const a = cameraOffset.applyQuaternion(playerAirplane.quaternion).add(playerAirplane.position);
-    camera.position.copy(a);
+    // Update camera to follow player - smooth third-person view
+    const cameraOffset = new THREE.Vector3(0, 8, 20);
+    const targetCamPos = cameraOffset.applyQuaternion(playerAirplane.quaternion).add(playerAirplane.position);
+    camera.position.lerp(targetCamPos, 0.08); // Smooth camera follow
     camera.lookAt(playerAirplane.position);
 
     // Update health bar position and appearance
