@@ -22,6 +22,16 @@ let rollProgress = 0;
 let rollTargetDirection: 'left' | 'right' | null = null;
 let isStabilizing = false;
 
+// Vertical flip state (Q key)
+let isFlipping = false;
+let flipProgress = 0;
+let lastQKeyState = false;
+
+// Banking state (tilt on A/D turns)
+let currentBankAngle = 0;
+const maxBankAngle = 0.4; // ~23 degrees max bank
+const bankSpeed = 0.02;
+
 // Speed boost
 let speedBoostActive = false;
 let lastZKeyState = false;
@@ -361,8 +371,10 @@ function respawnPlayer() {
     currentPitchVelocity = 0;
     speedBoostActive = false;
     isRolling = false;
+    isFlipping = false;
     isStabilizing = false;
     autoBalanceActive = false;
+    currentBankAngle = 0;
     lastTurnTime = Date.now();
 
     // Reset health
@@ -494,63 +506,95 @@ function animate() {
         playEngineSound();
     }
 
-    // Smooth rotation
-    let rotationInput = 0;
-    if (keys['KeyA']) {
-        rotationInput = 1;
-        lastTurnTime = Date.now();
+    // Handle Q key for vertical flip (180 degree pitch loop)
+    if (keys['KeyQ'] && !lastQKeyState && !isFlipping && !isRolling && !isStabilizing) {
+        isFlipping = true;
+        flipProgress = 0;
+        playRollSound();
     }
-    if (keys['KeyD']) {
-        rotationInput = -1;
-        lastTurnTime = Date.now();
+    lastQKeyState = !!keys['KeyQ'];
+
+    // Handle mouse roll maneuver
+    const currentRollDirection = getRollDirection();
+    if (currentRollDirection !== null && !isRolling && !isFlipping && !isStabilizing) {
+        isRolling = true;
+        rollTargetDirection = currentRollDirection;
+        rollProgress = 0;
+        resetRollDirection();
+        playRollSound();
+    }
+
+    // Smooth rotation (A/D turning)
+    let rotationInput = 0;
+    if (!isRolling && !isFlipping) {
+        if (keys['KeyA']) {
+            rotationInput = 1;
+            lastTurnTime = Date.now();
+        }
+        if (keys['KeyD']) {
+            rotationInput = -1;
+            lastTurnTime = Date.now();
+        }
     }
 
     // Apply rotation acceleration
     currentRotationVelocity += rotationInput * rotationAcceleration;
-    currentRotationVelocity *= damping; // Damping for smooth deceleration
+    currentRotationVelocity *= damping;
     currentRotationVelocity = Math.max(-maxRotationSpeed, Math.min(maxRotationSpeed, currentRotationVelocity));
 
     if (Math.abs(currentRotationVelocity) > 0.001) {
         playerAirplane.rotateY(currentRotationVelocity);
     }
-    // Handle roll maneuver
-    const currentRollDirection = getRollDirection();
-    if (currentRollDirection !== null && !isRolling && !isStabilizing) {
-        isRolling = true;
-        rollTargetDirection = currentRollDirection;
-        rollProgress = 0;
-        resetRollDirection(); // Reset after starting roll
-        playRollSound();
+
+    // Banking: tilt the plane sideways when turning with A/D
+    const targetBank = -rotationInput * maxBankAngle;
+    currentBankAngle += (targetBank - currentBankAngle) * bankSpeed * 3;
+    // Slowly return to 0 when not turning
+    if (rotationInput === 0) {
+        currentBankAngle *= 0.95;
+    }
+    if (Math.abs(currentBankAngle) > 0.001) {
+        playerAirplane.rotateZ(currentBankAngle * 0.1);
     }
 
-    if (isRolling) {
-        const fastRollSpeed = 0.15; // Fast roll speed
-        const rollAmount = rollTargetDirection === 'left' ? fastRollSpeed : -fastRollSpeed;
+    // Execute vertical flip (Q key) - elegant slow loop
+    if (isFlipping) {
+        const flipSpeed = 0.04; // Slow elegant flip
+        playerAirplane.rotateX(flipSpeed);
+        flipProgress += flipSpeed;
+
+        // Complete after 180 degrees (PI)
+        if (flipProgress >= Math.PI) {
+            isFlipping = false;
+            isStabilizing = true;
+        }
+    }
+    // Execute barrel roll (mouse click) - slower and elegant
+    else if (isRolling) {
+        const rollSpeed = 0.05; // Slower elegant roll
+        const rollAmount = rollTargetDirection === 'left' ? rollSpeed : -rollSpeed;
         playerAirplane.rotateZ(rollAmount);
-        rollProgress += fastRollSpeed;
+        rollProgress += rollSpeed;
 
         // Complete roll after 360 degrees (2 * PI)
         if (rollProgress >= Math.PI * 2) {
             isRolling = false;
             isStabilizing = true;
         }
-    } else if (isStabilizing) {
-        // Stabilize: align the plane so ground is below
-        // Get the current up vector of the plane
+    }
+    // Stabilize after flip or roll
+    else if (isStabilizing) {
         const currentUp = new THREE.Vector3(0, 1, 0).applyQuaternion(playerAirplane.quaternion);
         const targetUp = new THREE.Vector3(0, 1, 0);
 
-        // Calculate the rotation needed to align up vectors
         const rotationAxis = new THREE.Vector3().crossVectors(currentUp, targetUp).normalize();
-        const angle = Math.acos(currentUp.dot(targetUp));
+        const angle = Math.acos(Math.max(-1, Math.min(1, currentUp.dot(targetUp))));
 
         if (angle > 0.01) {
-            // Apply a portion of the needed rotation for smooth stabilization
-            const stabilizationSpeed = 0.05;
+            const stabilizationSpeed = 0.04;
             const quaternion = new THREE.Quaternion().setFromAxisAngle(rotationAxis, angle * stabilizationSpeed);
             playerAirplane.quaternion.multiplyQuaternions(quaternion, playerAirplane.quaternion);
         } else {
-            // Stabilization complete
             isStabilizing = false;
         }
     } else {
@@ -577,7 +621,7 @@ function animate() {
             }
         }
 
-        // Normal controls (only when not rolling or stabilizing)
+        // Normal pitch controls (W/S)
         let pitchInput = 0;
         if (keys['KeyW']) {
             pitchInput = 1;
