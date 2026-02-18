@@ -19,3 +19,6 @@ export const SUN_POSITION = { x: 150, y: 120, z: -300 };
 
 export const ASTEROID_BOUNDS = 1200;
 export const WORLD_SPREAD = 2000;
+
+export const CLOUD_COUNT = 25;
+export const CLOUD_SPREAD = 1400;

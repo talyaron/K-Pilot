@@ -14,6 +14,8 @@ import {
   PLANET_POSITION,
   SUN_POSITION,
   WORLD_SPREAD,
+  CLOUD_COUNT,
+  CLOUD_SPREAD,
 } from '../constants/sceneConstants';
 
 export class WorldBuilder {
@@ -22,6 +24,7 @@ export class WorldBuilder {
     const planet = this.createPlanet(scene);
     this.createStars(scene);
     this.createDistantStars(scene);
+    this.createClouds(scene);
     this.createGround(scene);
     this.createGrids(scene);
     this.createRunwayStrips(scene);
@@ -287,5 +290,39 @@ export class WorldBuilder {
     }
 
     return asteroids;
+  }
+
+  private createClouds(scene: THREE.Scene): void {
+    for (let i = 0; i < CLOUD_COUNT; i++) {
+      const cloudGroup = new THREE.Group();
+      const puffCount = Math.floor(Math.random() * 5) + 4;
+
+      for (let j = 0; j < puffCount; j++) {
+        const radius = Math.random() * 14 + 6;
+        const geo = new THREE.SphereGeometry(radius, 7, 7);
+        const mat = new THREE.MeshStandardMaterial({
+          color: 0xaaddff,
+          emissive: 0x2255aa,
+          emissiveIntensity: 0.15,
+          transparent: true,
+          opacity: Math.random() * 0.12 + 0.08,
+        });
+        const puff = new THREE.Mesh(geo, mat);
+        puff.position.set(
+          (Math.random() - 0.5) * 35,
+          (Math.random() - 0.5) * 10,
+          (Math.random() - 0.5) * 35,
+        );
+        cloudGroup.add(puff);
+      }
+
+      cloudGroup.position.set(
+        (Math.random() - 0.5) * CLOUD_SPREAD,
+        Math.random() * 90 + 20,
+        (Math.random() - 0.5) * CLOUD_SPREAD,
+      );
+
+      scene.add(cloudGroup);
+    }
   }
 }
