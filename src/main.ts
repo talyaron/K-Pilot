@@ -365,30 +365,20 @@ function handleKillConfirmed(killerId: string) {
     }
 }
 
-<<<<<<< HEAD
-function spawnBullet(initialPosition: THREE.Vector3, initialQuaternion: THREE.Quaternion, isLocal: boolean) {
-    const bulletMesh = createBullet();
-    bulletMesh.position.copy(initialPosition);
-    const bulletVelocity = new THREE.Vector3(0, 0, -1).applyQuaternion(initialQuaternion).multiplyScalar(1.5);
-
-    bullets.push({ mesh: bulletMesh, velocity: bulletVelocity, lifetime: 600, isLocal });
-=======
 function spawnBullet(initialPosition: THREE.Vector3, initialQuaternion: THREE.Quaternion, isLocal: boolean, isRocket: boolean = false) {
     const bulletMesh = isRocket ? createRocket() : createBullet();
     if (isRocket) {
-        // Spawn 3 units ahead of the plane so the rocket clears the model
         const forward = new THREE.Vector3(0, 0, -3).applyQuaternion(initialQuaternion);
         bulletMesh.position.copy(initialPosition).add(forward);
         bulletMesh.quaternion.copy(initialQuaternion);
     } else {
         bulletMesh.position.copy(initialPosition);
     }
-    const speed = isRocket ? 0.55 : 0.5;
-    const lifetime = isRocket ? 220 : 200;
+    const speed = isRocket ? 0.55 : 1.5;
+    const lifetime = isRocket ? 220 : 600;
     const bulletVelocity = new THREE.Vector3(0, 0, -1).applyQuaternion(initialQuaternion).multiplyScalar(speed);
 
     bullets.push({ mesh: bulletMesh, velocity: bulletVelocity, lifetime, isLocal, isRocket });
->>>>>>> rocket
     scene.add(bulletMesh);
 }
 

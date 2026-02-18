@@ -162,11 +162,7 @@ export class GameEngine {
       this.bulletManager.spawnBullet(
         this.playerAirplane.position,
         this.playerAirplane.quaternion,
-<<<<<<< HEAD
         this.multiplayerService.getPlayerId(),
-=======
-        false,
->>>>>>> rocket
       );
       this.multiplayerService.fireBullet(
         this.playerAirplane.position,
@@ -182,6 +178,7 @@ export class GameEngine {
       this.bulletManager.spawnBullet(
         this.playerAirplane.position,
         this.playerAirplane.quaternion,
+        this.multiplayerService.getPlayerId(),
         true,
       );
       this.multiplayerService.fireBullet(

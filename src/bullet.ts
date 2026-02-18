@@ -1,14 +1,9 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 
-<<<<<<< HEAD
-const bulletGeometry = new THREE.SphereGeometry(0.4, 8, 8);
-const bulletMaterial = new THREE.MeshBasicMaterial({ color: 0xff4400, emissive: 0xff2200 } as any);
-=======
 // ── Regular bullet (Space key) ──────────────────────────────────────────────
-const bulletGeometry = new THREE.SphereGeometry(0.1, 8, 8);
-const bulletMaterial = new THREE.MeshBasicMaterial({ color: 0xfff000 });
->>>>>>> rocket
+const bulletGeometry = new THREE.SphereGeometry(0.4, 8, 8);
+const bulletMaterial = new THREE.MeshBasicMaterial({ color: 0xff4400 } as any);
 
 export function createBullet(): THREE.Mesh {
     return new THREE.Mesh(bulletGeometry, bulletMaterial);

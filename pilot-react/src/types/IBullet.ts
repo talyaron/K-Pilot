@@ -4,9 +4,6 @@ export interface IBullet {
   mesh: Object3D;
   velocity: Vector3;
   lifetime: number;
-<<<<<<< HEAD
   shooterId: string;
-=======
   isRocket: boolean;
->>>>>>> rocket
 }

@@ -18,13 +18,7 @@ export class BulletManager {
 
   constructor(private scene: THREE.Scene) {}
 
-<<<<<<< HEAD
-  spawnBullet(position: Vector3, quaternion: Quaternion, shooterId: string): void {
-    const mesh = createBulletMesh();
-    mesh.position.copy(position);
-    const velocity = new Vector3(0, 0, -1)
-=======
-  spawnBullet(position: THREE.Vector3, quaternion: THREE.Quaternion, isRocket: boolean = false): void {
+  spawnBullet(position: THREE.Vector3, quaternion: THREE.Quaternion, shooterId: string, isRocket: boolean = false): void {
     const mesh = isRocket ? createRocketMesh() : createBulletMesh();
 
     if (isRocket) {
@@ -38,23 +32,14 @@ export class BulletManager {
     const speed = isRocket ? ROCKET_SPEED : BULLET_SPEED;
     const lifetime = isRocket ? ROCKET_LIFETIME : BULLET_LIFETIME;
     const velocity = new THREE.Vector3(0, 0, -1)
->>>>>>> rocket
       .applyQuaternion(quaternion)
       .multiplyScalar(speed);
 
-<<<<<<< HEAD
-    this.bullets.push({ mesh, velocity, lifetime: BULLET_LIFETIME, shooterId });
+    this.bullets.push({ mesh, velocity, lifetime, shooterId, isRocket });
     this.scene.add(mesh);
   }
 
-  update(otherPlayers: Record<string, Group>, localPlayerId: string): string | null {
-=======
-    this.bullets.push({ mesh, velocity, lifetime, isRocket });
-    this.scene.add(mesh);
-  }
-
-  update(otherPlayers: Record<string, THREE.Group>): string | null {
->>>>>>> rocket
+  update(otherPlayers: Record<string, THREE.Group>, localPlayerId: string): string | null {
     let hitPlayerId: string | null = null;
 
     for (let i = this.bullets.length - 1; i >= 0; i--) {
