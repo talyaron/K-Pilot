@@ -3,13 +3,14 @@ import './style.css';
 import { scene, renderer, camera, asteroids, towers, platforms, sun, planet } from './scene.ts';
 import { loadAirplane } from './planeLoader.ts';
 import { keys, getRollDirection, resetRollDirection } from './controls.ts';
-import { initMultiplayer, updatePlayerPosition, fireBullet, onBulletFired, reportHit, onPlayerHit, getPlayerId, players } from './firebase.ts';
+import { initMultiplayer, updatePlayerPosition, fireBullet, onBulletFired, reportHit, onPlayerHit, getPlayerId, players, onKillReported, reportKill } from './firebase.ts';
 import { createBullet } from './bullet.ts';
 
 interface Bullet {
     mesh: THREE.Mesh;
     velocity: THREE.Vector3;
     lifetime: number;
+    isLocal: boolean; // true = fired by this player, false = from another player
 }
 
 const bullets: Bullet[] = [];
@@ -313,27 +314,38 @@ function spawnEngineParticle() {
 }
 
 // Handle player hits from other players
-function handlePlayerHit(victimId: string) {
+function handlePlayerHit(victimId: string, attackerId: string, damage: number) {
     if (victimId === getPlayerId()) {
         // We got hit!
-        playerHealth -= 20; // 20 damage per hit
-        if (playerHealth < 0) playerHealth = 0;
+        playerHealth -= damage;
+        if (playerHealth <= 0) {
+            playerHealth = 0;
+            // Report our death to give the attacker a kill
+            reportKill(attackerId);
+        }
     }
 }
 
-function spawnBullet(initialPosition: THREE.Vector3, initialQuaternion: THREE.Quaternion) {
+// Handle kill confirmations
+function handleKillConfirmed(killerId: string) {
+    if (killerId === getPlayerId()) {
+        killCount++;
+    }
+}
+
+function spawnBullet(initialPosition: THREE.Vector3, initialQuaternion: THREE.Quaternion, isLocal: boolean) {
     const bulletMesh = createBullet();
     bulletMesh.position.copy(initialPosition);
     const bulletVelocity = new THREE.Vector3(0, 0, -1).applyQuaternion(initialQuaternion).multiplyScalar(0.5);
-    
-    bullets.push({ mesh: bulletMesh, velocity: bulletVelocity, lifetime: 200 });
+
+    bullets.push({ mesh: bulletMesh, velocity: bulletVelocity, lifetime: 200, isLocal });
     scene.add(bulletMesh);
 }
 
 onBulletFired((data) => {
     const position = new THREE.Vector3().fromArray(data.position);
     const quaternion = new THREE.Quaternion().fromArray(data.quaternion);
-    spawnBullet(position, quaternion);
+    spawnBullet(position, quaternion, false); // Remote bullet
 });
 
 // Reset player to spawn position
@@ -590,7 +602,7 @@ function animate() {
 
     if (keys['Space'] && fireCooldown <= 0) {
         fireCooldown = 30; // 30 frames cooldown
-        spawnBullet(playerAirplane.position, playerAirplane.quaternion);
+        spawnBullet(playerAirplane.position, playerAirplane.quaternion, true); // Local bullet
         fireBullet(playerAirplane.position, playerAirplane.quaternion);
         playShootSound();
     }
@@ -605,15 +617,24 @@ function animate() {
         bullet.mesh.position.add(bullet.velocity);
         bullet.lifetime--;
 
-        // Check collision with other players
         let hitDetected = false;
-        for (const [playerId, otherPlayer] of Object.entries(players)) {
-            const distance = bullet.mesh.position.distanceTo(otherPlayer.position);
-            if (distance < 5) { // Collision radius
-                reportHit(playerId);
+
+        if (bullet.isLocal) {
+            // Local bullets check collision with OTHER players
+            for (const [id, otherPlayer] of Object.entries(players)) {
+                const distance = bullet.mesh.position.distanceTo(otherPlayer.position);
+                if (distance < 5) {
+                    reportHit(id, getPlayerId()); // Send victim ID and attacker ID
+                    hitDetected = true;
+                    break;
+                }
+            }
+        } else {
+            // Remote bullets check collision with LOCAL player
+            const distance = bullet.mesh.position.distanceTo(playerAirplane.position);
+            if (distance < 5) {
                 hitDetected = true;
-                killCount++;
-                break;
+                // Damage is handled via Firebase onPlayerHit
             }
         }
 
@@ -663,8 +684,8 @@ function animate() {
         if (Math.abs(asteroid.position.z) > 1200) asteroid.position.z *= -0.9;
     });
 
-    // Update firebase with new position
-    updatePlayerPosition(playerAirplane);
+    // Update firebase with new position and health
+    updatePlayerPosition(playerAirplane, playerHealth);
 
     // Update camera to follow player - zoomed out third-person view
     const cameraOffset = new THREE.Vector3(0, 8, 20); // Much further back and higher
@@ -700,8 +721,9 @@ async function initGame() {
     // Initialize multiplayer
     initMultiplayer(playerAirplane);
 
-    // Listen for hits
+    // Listen for hits and kills
     onPlayerHit(handlePlayerHit);
+    onKillReported(handleKillConfirmed);
 
     // Start game loop
     animate();

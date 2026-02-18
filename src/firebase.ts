@@ -77,11 +77,12 @@ export function getPlayerId() {
 }
 
 
-export function updatePlayerPosition(playerAirplane: Group) {
+export function updatePlayerPosition(playerAirplane: Group, health?: number) {
     if (playerRef) {
         set(playerRef, {
             position: playerAirplane.position.toArray(),
             rotation: playerAirplane.rotation.toArray(),
+            health: health ?? 100,
         });
     }
 }
@@ -103,13 +104,34 @@ export function onBulletFired(callback: (data: any) => void) {
     });
 }
 
-export function reportHit(victimId: string) {
-    push(hitsRef, { victimId });
+export function reportHit(victimId: string, attackerId: string) {
+    push(hitsRef, { victimId, attackerId, damage: 20 });
 }
 
-export function onPlayerHit(callback: (victimId: string) => void) {
+export function onPlayerHit(callback: (victimId: string, attackerId: string, damage: number) => void) {
     onChildAdded(hitsRef, (snapshot) => {
         const data = snapshot.val();
-        callback(data.victimId);
+        if (data && data.victimId && data.attackerId) {
+            callback(data.victimId, data.attackerId, data.damage || 20);
+        }
+    });
+}
+
+export function updatePlayerHealth(health: number) {
+    if (playerRef) {
+        set(ref(database, 'players/' + playerId + '/health'), health);
+    }
+}
+
+export function reportKill(killerId: string) {
+    push(ref(database, 'kills'), { killerId, timestamp: Date.now() });
+}
+
+export function onKillReported(callback: (killerId: string) => void) {
+    onChildAdded(ref(database, 'kills'), (snapshot) => {
+        const data = snapshot.val();
+        if (data && data.killerId) {
+            callback(data.killerId);
+        }
     });
 }
