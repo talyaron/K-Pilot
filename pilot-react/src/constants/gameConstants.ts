@@ -19,6 +19,7 @@ export const FIRE_COOLDOWN_FRAMES = 30;
 export const BULLET_SPEED = 0.5;
 export const BULLET_LIFETIME = 200;
 export const BULLET_HIT_RADIUS = 5;
+export const BULLET_GRACE_FRAMES = 6; // 0.1 seconds at 60fps
 
 export const COLLISION_RADIUS = 3;
 export const ROLL_SPEED = 0.15;

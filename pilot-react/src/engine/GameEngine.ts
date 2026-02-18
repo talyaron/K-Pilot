@@ -84,7 +84,7 @@ export class GameEngine {
     this.multiplayerService.onBulletFired((data) => {
       const position = new THREE.Vector3().fromArray(data.position);
       const quaternion = new THREE.Quaternion().fromArray(data.quaternion);
-      this.bulletManager.spawnBullet(position, quaternion);
+      this.bulletManager.spawnBullet(position, quaternion, data.playerId);
     });
 
     this.multiplayerService.onPlayerHit((victimId) => {
@@ -159,6 +159,7 @@ export class GameEngine {
       this.bulletManager.spawnBullet(
         this.playerAirplane.position,
         this.playerAirplane.quaternion,
+        this.multiplayerService.getPlayerId(),
       );
       this.multiplayerService.fireBullet(
         this.playerAirplane.position,
@@ -175,6 +176,7 @@ export class GameEngine {
   private updateBullets(): void {
     const hitPlayerId = this.bulletManager.update(
       this.multiplayerService.otherPlayers,
+      this.multiplayerService.getPlayerId(),
     );
     if (hitPlayerId) {
       this.multiplayerService.reportHit(hitPlayerId);

@@ -12,18 +12,18 @@ export class BulletManager {
 
   constructor(private scene: Scene) {}
 
-  spawnBullet(position: Vector3, quaternion: Quaternion): void {
+  spawnBullet(position: Vector3, quaternion: Quaternion, shooterId: string): void {
     const mesh = createBulletMesh();
     mesh.position.copy(position);
     const velocity = new Vector3(0, 0, -1)
       .applyQuaternion(quaternion)
       .multiplyScalar(BULLET_SPEED);
 
-    this.bullets.push({ mesh, velocity, lifetime: BULLET_LIFETIME });
+    this.bullets.push({ mesh, velocity, lifetime: BULLET_LIFETIME, shooterId });
     this.scene.add(mesh);
   }
 
-  update(otherPlayers: Record<string, Group>): string | null {
+  update(otherPlayers: Record<string, Group>, localPlayerId: string): string | null {
     let hitPlayerId: string | null = null;
 
     for (let i = this.bullets.length - 1; i >= 0; i--) {
@@ -33,10 +33,14 @@ export class BulletManager {
 
       let hitDetected = false;
       for (const [playerId, otherPlayer] of Object.entries(otherPlayers)) {
+        if (playerId === bullet.shooterId) continue;
         const distance = bullet.mesh.position.distanceTo(otherPlayer.position);
         if (distance < BULLET_HIT_RADIUS) {
-          hitPlayerId = playerId;
           hitDetected = true;
+          // Only the shooter reports the hit to avoid duplicate damage
+          if (bullet.shooterId === localPlayerId) {
+            hitPlayerId = playerId;
+          }
           break;
         }
       }
