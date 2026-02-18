@@ -4,4 +4,5 @@ export interface IBullet {
   mesh: Mesh;
   velocity: Vector3;
   lifetime: number;
+  shooterId: string;
 }
