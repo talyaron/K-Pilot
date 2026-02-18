@@ -1,0 +1,49 @@
+#hud {
+  position: fixed;
+  top: 20px;
+  left: 20px;
+  z-index: 100;
+  color: #00ffff;
+  font-family: 'Courier New', monospace;
+}
+
+#kill-count {
+  font-size: 24px;
+  font-weight: bold;
+  text-shadow: 0 0 10px rgba(0, 255, 255, 0.8);
+  margin-bottom: 15px;
+}
+
+#kills {
+  color: #00ff00;
+}
+
+#health-display {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+#health-bar-container {
+  width: 200px;
+  height: 25px;
+  background-color: rgba(100, 0, 0, 0.7);
+  border: 2px solid #00ffff;
+  border-radius: 3px;
+  overflow: hidden;
+  box-shadow: 0 0 10px rgba(0, 255, 255, 0.5);
+}
+
+#health-bar-fill {
+  height: 100%;
+  width: 100%;
+  background: linear-gradient(90deg, #00ff00, #00ff00);
+  transition: width 0.3s ease, background 0.3s ease;
+}
+
+#health-text {
+  font-size: 20px;
+  font-weight: bold;
+  min-width: 50px;
+  text-shadow: 0 0 10px rgba(0, 255, 255, 0.8);
+}
