@@ -20,6 +20,13 @@ export const BULLET_SPEED = 0.5;
 export const BULLET_LIFETIME = 200;
 export const BULLET_HIT_RADIUS = 5;
 
+export const ROCKET_SPEED = 0.55;
+export const ROCKET_LIFETIME = 220;
+export const ROCKET_COOLDOWN_FRAMES = 60;
+export const ROCKET_SPAWN_OFFSET = 3;
+export const ROCKET_TRAIL_SPAWN_CHANCE = 0.85;
+export const ROCKET_TRAIL_LIFETIME = 18;
+
 export const COLLISION_RADIUS = 3;
 export const ROLL_SPEED = 0.15;
 
