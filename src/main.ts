@@ -4,17 +4,19 @@ import { scene, renderer, camera, asteroids, towers, platforms, sun, planet } fr
 import { loadAirplane } from './planeLoader.ts';
 import { keys, getRollDirection, resetRollDirection } from './controls.ts';
 import { initMultiplayer, updatePlayerPosition, fireBullet, onBulletFired, reportHit, onPlayerHit, getPlayerId, players, onKillReported, reportKill } from './firebase.ts';
-import { createBullet } from './bullet.ts';
+import { createBullet, createRocket } from './bullet.ts';
 
 interface Bullet {
-    mesh: THREE.Mesh;
+    mesh: THREE.Object3D;
     velocity: THREE.Vector3;
     lifetime: number;
     isLocal: boolean; // true = fired by this player, false = from another player
+    isRocket: boolean;
 }
 
 const bullets: Bullet[] = [];
 let fireCooldown = 0;
+let rocketCooldown = 0;
 
 // ===== NEW FLIGHT SYSTEM: Angle-based with clamping =====
 // Flight angles (the real orientation state)
@@ -191,6 +193,7 @@ interface Particle {
     lifetime: number;
 }
 const engineParticles: Particle[] = [];
+const rocketTrails: Particle[] = [];
 
 // Player's airplane (will be loaded asynchronously)
 let playerAirplane: THREE.Group;
@@ -362,19 +365,37 @@ function handleKillConfirmed(killerId: string) {
     }
 }
 
+<<<<<<< HEAD
 function spawnBullet(initialPosition: THREE.Vector3, initialQuaternion: THREE.Quaternion, isLocal: boolean) {
     const bulletMesh = createBullet();
     bulletMesh.position.copy(initialPosition);
     const bulletVelocity = new THREE.Vector3(0, 0, -1).applyQuaternion(initialQuaternion).multiplyScalar(1.5);
 
     bullets.push({ mesh: bulletMesh, velocity: bulletVelocity, lifetime: 600, isLocal });
+=======
+function spawnBullet(initialPosition: THREE.Vector3, initialQuaternion: THREE.Quaternion, isLocal: boolean, isRocket: boolean = false) {
+    const bulletMesh = isRocket ? createRocket() : createBullet();
+    if (isRocket) {
+        // Spawn 3 units ahead of the plane so the rocket clears the model
+        const forward = new THREE.Vector3(0, 0, -3).applyQuaternion(initialQuaternion);
+        bulletMesh.position.copy(initialPosition).add(forward);
+        bulletMesh.quaternion.copy(initialQuaternion);
+    } else {
+        bulletMesh.position.copy(initialPosition);
+    }
+    const speed = isRocket ? 0.55 : 0.5;
+    const lifetime = isRocket ? 220 : 200;
+    const bulletVelocity = new THREE.Vector3(0, 0, -1).applyQuaternion(initialQuaternion).multiplyScalar(speed);
+
+    bullets.push({ mesh: bulletMesh, velocity: bulletVelocity, lifetime, isLocal, isRocket });
+>>>>>>> rocket
     scene.add(bulletMesh);
 }
 
 onBulletFired((data) => {
     const position = new THREE.Vector3().fromArray(data.position);
     const quaternion = new THREE.Quaternion().fromArray(data.quaternion);
-    spawnBullet(position, quaternion, false); // Remote bullet
+    spawnBullet(position, quaternion, false, false); // Remote bullet
 });
 
 // Reset player to spawn position
@@ -613,22 +634,47 @@ function animate() {
         }
     }
 
+    // Regular gun — Space
     if (keys['Space'] && fireCooldown <= 0) {
-        fireCooldown = 30; // 30 frames cooldown
-        spawnBullet(playerAirplane.position, playerAirplane.quaternion, true); // Local bullet
+        fireCooldown = 30;
+        spawnBullet(playerAirplane.position, playerAirplane.quaternion, true, false);
         fireBullet(playerAirplane.position, playerAirplane.quaternion);
         playShootSound();
     }
+    if (fireCooldown > 0) fireCooldown--;
 
-    if (fireCooldown > 0) {
-        fireCooldown--;
+    // Rocket launcher — G
+    if (keys['KeyG'] && rocketCooldown <= 0) {
+        rocketCooldown = 60; // slower fire rate for rockets
+        spawnBullet(playerAirplane.position, playerAirplane.quaternion, true, true);
+        fireBullet(playerAirplane.position, playerAirplane.quaternion);
+        playShootSound();
     }
+    if (rocketCooldown > 0) rocketCooldown--;
 
     // Update bullets
     for (let i = bullets.length - 1; i >= 0; i--) {
         const bullet = bullets[i];
         bullet.mesh.position.add(bullet.velocity);
         bullet.lifetime--;
+
+        // Rocket exhaust trail (only for rockets)
+        if (bullet.isRocket && Math.random() < 0.85) {
+            const trailGeo = new THREE.SphereGeometry(0.28 + Math.random() * 0.18, 6, 6);
+            const trailColor = Math.random() < 0.6 ? 0xff6600 : 0xffcc00;
+            const trailMat = new THREE.MeshBasicMaterial({ color: trailColor, transparent: true, opacity: 0.95 });
+            const trailMesh = new THREE.Mesh(trailGeo, trailMat);
+            // Spawn at tail (+Z direction = opposite of velocity)
+            const tailOffset = bullet.velocity.clone().normalize().multiplyScalar(-0.7);
+            trailMesh.position.copy(bullet.mesh.position).add(tailOffset);
+            trailMesh.position.x += (Math.random() - 0.5) * 0.12;
+            trailMesh.position.y += (Math.random() - 0.5) * 0.12;
+            const trailVel = tailOffset.clone().multiplyScalar(0.04).add(
+                new THREE.Vector3((Math.random() - 0.5) * 0.025, (Math.random() - 0.5) * 0.025, 0)
+            );
+            rocketTrails.push({ mesh: trailMesh, velocity: trailVel, lifetime: 18 });
+            scene.add(trailMesh);
+        }
 
         let hitDetected = false;
 
@@ -676,6 +722,19 @@ function animate() {
         if (particle.lifetime <= 0) {
             scene.remove(particle.mesh);
             engineParticles.splice(i, 1);
+        }
+    }
+
+    // Update rocket trail particles
+    for (let i = rocketTrails.length - 1; i >= 0; i--) {
+        const trail = rocketTrails[i];
+        trail.mesh.position.add(trail.velocity);
+        trail.lifetime--;
+        const mat = trail.mesh.material as THREE.MeshBasicMaterial;
+        mat.opacity = (trail.lifetime / 18) * 0.95;
+        if (trail.lifetime <= 0) {
+            scene.remove(trail.mesh);
+            rocketTrails.splice(i, 1);
         }
     }
 

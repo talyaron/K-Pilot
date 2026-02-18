@@ -2,7 +2,11 @@
   "permissions": {
     "allow": [
       "Bash(ping:*)",
+<<<<<<< HEAD
       "Bash(npx vite:*)"
+=======
+      "Bash(npx tsc:*)"
+>>>>>>> rocket
     ]
   }
 }

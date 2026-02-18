@@ -18,6 +18,7 @@ import {
   HIT_DAMAGE,
   RESPAWN_FRAMES,
   FIRE_COOLDOWN_FRAMES,
+  ROCKET_COOLDOWN_FRAMES,
   ENGINE_SOUND_CHANCE,
 } from '../constants/gameConstants';
 import type { IGameState, IGameCallbacks, IRadarPlayer } from '../types';
@@ -44,6 +45,7 @@ export class GameEngine {
   private isDead: boolean = false;
   private respawnTimer: number = 0;
   private fireCooldown: number = 0;
+  private rocketCooldown: number = 0;
 
   // Callbacks
   private callbacks: IGameCallbacks;
@@ -154,12 +156,17 @@ export class GameEngine {
   private updateShooting(): void {
     if (!this.playerAirplane) return;
 
+    // Regular gun — Space
     if (this.inputManager.keys['Space'] && this.fireCooldown <= 0) {
       this.fireCooldown = FIRE_COOLDOWN_FRAMES;
       this.bulletManager.spawnBullet(
         this.playerAirplane.position,
         this.playerAirplane.quaternion,
+<<<<<<< HEAD
         this.multiplayerService.getPlayerId(),
+=======
+        false,
+>>>>>>> rocket
       );
       this.multiplayerService.fireBullet(
         this.playerAirplane.position,
@@ -167,10 +174,23 @@ export class GameEngine {
       );
       this.audioService.playShootSound();
     }
+    if (this.fireCooldown > 0) this.fireCooldown--;
 
-    if (this.fireCooldown > 0) {
-      this.fireCooldown--;
+    // Rocket launcher — G
+    if (this.inputManager.keys['KeyG'] && this.rocketCooldown <= 0) {
+      this.rocketCooldown = ROCKET_COOLDOWN_FRAMES;
+      this.bulletManager.spawnBullet(
+        this.playerAirplane.position,
+        this.playerAirplane.quaternion,
+        true,
+      );
+      this.multiplayerService.fireBullet(
+        this.playerAirplane.position,
+        this.playerAirplane.quaternion,
+      );
+      this.audioService.playShootSound();
     }
+    if (this.rocketCooldown > 0) this.rocketCooldown--;
   }
 
   private updateBullets(): void {

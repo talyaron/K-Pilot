@@ -1,8 +1,12 @@
-import type { Mesh, Vector3 } from 'three';
+import type { Object3D, Vector3 } from 'three';
 
 export interface IBullet {
-  mesh: Mesh;
+  mesh: Object3D;
   velocity: Vector3;
   lifetime: number;
+<<<<<<< HEAD
   shooterId: string;
+=======
+  isRocket: boolean;
+>>>>>>> rocket
 }
