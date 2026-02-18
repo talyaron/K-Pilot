@@ -7,6 +7,7 @@ import {
   ConeGeometry,
   BoxGeometry,
   Color,
+  PointLight,
 } from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 
@@ -25,16 +26,20 @@ let rocketTemplate: Group | null = null;
 loader.load(
   '/rocket.glb',
   (gltf) => {
-    rocketTemplate = gltf.scene;
-    rocketTemplate.scale.set(2, 2, 2);
-    rocketTemplate.traverse((child) => {
+    const model = gltf.scene as Group;
+    model.scale.set(2, 2, 2);
+    // Nose is at +X after Blender export — rotate +90° around Y (left turn)
+    // to bring it to -Z (the airplane's forward direction).
+    model.rotation.y = Math.PI / 2;
+    model.traverse((child) => {
       if (!(child as Mesh).isMesh) return;
       const mesh = child as Mesh;
       const oldMat = Array.isArray(mesh.material) ? mesh.material[0] : mesh.material;
       const color = (oldMat as any).color ?? new Color(0xcccccc);
       mesh.material = new MeshBasicMaterial({ color });
     });
-    console.log('rocket.glb loaded');
+    rocketTemplate = model;
+    console.log('rocket.glb loaded from rocket.blend1');
   },
   undefined,
   (err) => console.warn('rocket.glb failed, using fallback:', err),
@@ -70,8 +75,15 @@ function buildFallbackRocket(): Group {
 }
 
 export function createRocketMesh(): Group {
-  if (rocketTemplate) {
-    return rocketTemplate.clone(true);
-  }
-  return buildFallbackRocket();
+  const root = new Group();
+
+  // Add the rocket body (GLB or fallback)
+  const body = rocketTemplate ? rocketTemplate.clone(true) : buildFallbackRocket();
+  root.add(body);
+
+  // Orange glow so the rocket is always visible and lights up surroundings
+  const light = new PointLight(0xff6600, 8, 40);
+  root.add(light);
+
+  return root;
 }
