@@ -336,9 +336,9 @@ function handleKillConfirmed(killerId: string) {
 function spawnBullet(initialPosition: THREE.Vector3, initialQuaternion: THREE.Quaternion, isLocal: boolean) {
     const bulletMesh = createBullet();
     bulletMesh.position.copy(initialPosition);
-    const bulletVelocity = new THREE.Vector3(0, 0, -1).applyQuaternion(initialQuaternion).multiplyScalar(0.5);
+    const bulletVelocity = new THREE.Vector3(0, 0, -1).applyQuaternion(initialQuaternion).multiplyScalar(1.5);
 
-    bullets.push({ mesh: bulletMesh, velocity: bulletVelocity, lifetime: 200, isLocal });
+    bullets.push({ mesh: bulletMesh, velocity: bulletVelocity, lifetime: 600, isLocal });
     scene.add(bulletMesh);
 }
 
@@ -623,16 +623,17 @@ function animate() {
             // Local bullets check collision with OTHER players
             for (const [id, otherPlayer] of Object.entries(players)) {
                 const distance = bullet.mesh.position.distanceTo(otherPlayer.position);
-                if (distance < 5) {
-                    reportHit(id, getPlayerId()); // Send victim ID and attacker ID
+                if (distance < 8) {
+                    reportHit(id, getPlayerId());
                     hitDetected = true;
+                    playExplosionSound();
                     break;
                 }
             }
         } else {
             // Remote bullets check collision with LOCAL player
             const distance = bullet.mesh.position.distanceTo(playerAirplane.position);
-            if (distance < 5) {
+            if (distance < 8) {
                 hitDetected = true;
                 // Damage is handled via Firebase onPlayerHit
             }

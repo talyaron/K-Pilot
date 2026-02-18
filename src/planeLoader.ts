@@ -16,7 +16,7 @@ export function loadAirplane(): Promise<THREE.Group> {
 
                 // Rotate the inner model so it faces forward (-Z in Three.js)
                 // The GLB model faces the wrong direction, so rotate it
-                model.rotation.y = Math.PI; // 180 degrees to face -Z
+                model.rotation.y = -Math.PI / 2; // 90 degrees to face -Z
 
                 // Enable shadows for all meshes in the model
                 model.traverse((child) => {
