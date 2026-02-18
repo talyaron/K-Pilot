@@ -16,35 +16,54 @@ interface Bullet {
 const bullets: Bullet[] = [];
 let fireCooldown = 0;
 
-// Roll state
-let isRolling = false;
-let rollProgress = 0;
-let rollTargetDirection: 'left' | 'right' | null = null;
-let isStabilizing = false;
+// ===== NEW FLIGHT SYSTEM: Angle-based with clamping =====
+// Flight angles (the real orientation state)
+let heading = 0;       // Yaw angle (radians, unlimited - can turn full circle)
+let pitch = 0;         // Pitch angle (radians, CLAMPED to prevent loops)
+let yawRate = 0;       // Current turn rate
+let pitchRate = 0;     // Current pitch rate
 
-// Vertical flip state (Q key)
-let isFlipping = false;
-let flipProgress = 0;
-let lastQKeyState = false;
+// Flight tuning
+const YAW_ACCEL = 0.0008;
+const MAX_YAW_RATE = 0.022;
+const PITCH_ACCEL = 0.0005;
+const MAX_PITCH_RATE = 0.015;
+const FLIGHT_DAMPING = 0.96;
+const MAX_PITCH_ANGLE = Math.PI / 3.5; // ~51 degrees max pitch up/down
+const MAX_BANK_ANGLE = 0.35;           // ~20 degrees visual bank
 
-// Banking state (tilt on A/D turns)
+// Visual banking (applied to inner model, not flight path)
 let currentBankAngle = 0;
-const maxBankAngle = 0.4; // ~23 degrees max bank
-const bankSpeed = 0.02;
 
-// Speed boost
+// Speed
+let currentSpeed = 0.1;
+let targetSpeed = 0.1;
 let speedBoostActive = false;
 let lastZKeyState = false;
 
-// Auto-balance
-let lastTurnTime = Date.now();
-let autoBalanceActive = false;
+// Special maneuvers
+let isRolling = false;
+let rollProgress = 0;
+let rollTargetDirection: 'left' | 'right' | null = null;
+let isFlipping = false;
+let flipProgress = 0;
+let flipHeadingStart = 0;
+let lastQKeyState = false;
 
-// Smooth movement
-let currentSpeed = 0.1;
-let targetSpeed = 0.1;
-let currentRotationVelocity = 0;
-let currentPitchVelocity = 0;
+// Build quaternion from heading + pitch angles
+function buildFlightQuaternion(h: number, p: number): THREE.Quaternion {
+    const yawQ = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), h);
+    const pitchQ = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), p);
+    return yawQ.multiply(pitchQ);
+}
+
+// Extract heading and pitch from a quaternion
+function extractFlightAngles(q: THREE.Quaternion): { heading: number; pitch: number } {
+    const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(q);
+    const h = Math.atan2(-forward.x, -forward.z);
+    const p = Math.asin(Math.max(-1, Math.min(1, forward.y)));
+    return { heading: h, pitch: p };
+}
 
 // Death and respawn
 let isDead = false;
@@ -361,21 +380,23 @@ onBulletFired((data) => {
 // Reset player to spawn position
 function respawnPlayer() {
     playerAirplane.position.set(0, 20, 0);
-    playerAirplane.rotation.set(0, 0, 0);
     playerAirplane.quaternion.set(0, 0, 0, 1);
 
-    // Reset all movement states
+    // Reset flight state
+    heading = 0;
+    pitch = 0;
+    yawRate = 0;
+    pitchRate = 0;
     currentSpeed = 0.1;
     targetSpeed = 0.1;
-    currentRotationVelocity = 0;
-    currentPitchVelocity = 0;
     speedBoostActive = false;
     isRolling = false;
     isFlipping = false;
-    isStabilizing = false;
-    autoBalanceActive = false;
     currentBankAngle = 0;
-    lastTurnTime = Date.now();
+
+    // Reset bank pivot
+    const bankPivot = playerAirplane.children[0];
+    if (bankPivot) bankPivot.rotation.z = 0;
 
     // Reset health
     playerHealth = maxHealth;
@@ -480,43 +501,32 @@ function animate() {
         return;
     }
 
-    const baseSpeed = 0.1;
-    const boostedSpeed = 0.35;
-    const rotationAcceleration = 0.0006;
-    const maxRotationSpeed = 0.02;
-    const pitchAcceleration = 0.0003;
-    const maxPitchSpeed = 0.012;
-    const damping = 0.96; // Higher damping = smoother, slower deceleration
-
-    // Handle Z key toggle for speed boost
-    if (keys['KeyZ'] && !lastZKeyState) {
-        speedBoostActive = !speedBoostActive;
-    }
+    // ===== SPEED =====
+    if (keys['KeyZ'] && !lastZKeyState) speedBoostActive = !speedBoostActive;
     lastZKeyState = keys['KeyZ'];
 
-    // Smooth speed transition
-    targetSpeed = speedBoostActive ? boostedSpeed : baseSpeed;
-    currentSpeed += (targetSpeed - currentSpeed) * 0.04; // Smoother speed transition
+    targetSpeed = speedBoostActive ? 0.35 : 0.1;
+    currentSpeed += (targetSpeed - currentSpeed) * 0.04;
 
-    // Always move forward with smooth speed
+    // Move forward along current facing direction
     playerAirplane.translateZ(-currentSpeed);
 
-    // Play engine sound periodically
-    if (Math.random() < 0.02) { // 2% chance per frame for continuous engine hum
-        playEngineSound();
-    }
+    // Engine sound
+    if (Math.random() < 0.02) playEngineSound();
 
-    // Handle Q key for vertical flip (180 degree pitch loop)
-    if (keys['KeyQ'] && !lastQKeyState && !isFlipping && !isRolling && !isStabilizing) {
+    // ===== SPECIAL MANEUVER TRIGGERS =====
+    // Q key: vertical U-turn (smooth 180-degree heading change)
+    if (keys['KeyQ'] && !lastQKeyState && !isFlipping && !isRolling) {
         isFlipping = true;
         flipProgress = 0;
+        flipHeadingStart = heading;
         playRollSound();
     }
     lastQKeyState = !!keys['KeyQ'];
 
-    // Handle mouse roll maneuver
+    // Mouse click: barrel roll (visual only, doesn't change flight path)
     const currentRollDirection = getRollDirection();
-    if (currentRollDirection !== null && !isRolling && !isFlipping && !isStabilizing) {
+    if (currentRollDirection !== null && !isRolling && !isFlipping) {
         isRolling = true;
         rollTargetDirection = currentRollDirection;
         rollProgress = 0;
@@ -524,120 +534,82 @@ function animate() {
         playRollSound();
     }
 
-    // Smooth rotation (A/D turning)
-    let rotationInput = 0;
-    if (!isRolling && !isFlipping) {
-        if (keys['KeyA']) {
-            rotationInput = 1;
-            lastTurnTime = Date.now();
-        }
-        if (keys['KeyD']) {
-            rotationInput = -1;
-            lastTurnTime = Date.now();
-        }
-    }
-
-    // Apply rotation acceleration
-    currentRotationVelocity += rotationInput * rotationAcceleration;
-    currentRotationVelocity *= damping;
-    currentRotationVelocity = Math.max(-maxRotationSpeed, Math.min(maxRotationSpeed, currentRotationVelocity));
-
-    if (Math.abs(currentRotationVelocity) > 0.0005) {
-        playerAirplane.rotateY(currentRotationVelocity);
-    }
-
-    // Banking: apply as absolute angle on the INNER model (not the airplane group)
-    // This prevents accumulation - it's purely visual tilt
-    const innerModel = playerAirplane.children[0];
-    if (innerModel) {
-        const targetBank = rotationInput * maxBankAngle; // Positive = tilt into turn
-        currentBankAngle += (targetBank - currentBankAngle) * 0.05; // Smooth lerp
-        if (Math.abs(currentBankAngle) < 0.001) currentBankAngle = 0;
-        innerModel.rotation.z = currentBankAngle; // Absolute, not incremental
-    }
-
-    // Execute vertical flip (Q key) - elegant slow loop
+    // ===== FLIGHT CONTROLS =====
     if (isFlipping) {
-        const flipSpeed = 0.035;
-        playerAirplane.rotateX(flipSpeed);
+        // Smooth U-turn: heading rotates 180 degrees, pitch arcs up and back
+        const flipSpeed = 0.025; // Elegant speed
         flipProgress += flipSpeed;
+        const t = flipProgress / Math.PI; // 0 to 1
+
+        // Smoothly interpolate heading by PI
+        heading = flipHeadingStart + flipProgress;
+        // Arc the pitch: rises to ~45° at midpoint, then back to 0
+        pitch = Math.sin(t * Math.PI) * (Math.PI / 4);
+
+        // Build quaternion from angles
+        playerAirplane.quaternion.copy(buildFlightQuaternion(heading, pitch));
 
         if (flipProgress >= Math.PI) {
             isFlipping = false;
-            isStabilizing = true;
+            heading = flipHeadingStart + Math.PI; // Exact 180
+            pitch = 0;
+            yawRate = 0;
+            pitchRate = 0;
+            playerAirplane.quaternion.copy(buildFlightQuaternion(heading, pitch));
         }
+    } else {
+        // Normal flight: A/D for yaw, W/S for pitch
+        let yawInput = 0;
+        let pitchInput = 0;
+
+        if (keys['KeyA']) yawInput = 1;
+        if (keys['KeyD']) yawInput = -1;
+        if (keys['KeyW']) pitchInput = 1;
+        if (keys['KeyS']) pitchInput = -1;
+
+        // Smooth yaw
+        yawRate += yawInput * YAW_ACCEL;
+        yawRate *= FLIGHT_DAMPING;
+        yawRate = Math.max(-MAX_YAW_RATE, Math.min(MAX_YAW_RATE, yawRate));
+        heading += yawRate;
+
+        // Smooth pitch with CLAMPING (no full loops!)
+        pitchRate += pitchInput * PITCH_ACCEL;
+        pitchRate *= FLIGHT_DAMPING;
+        pitchRate = Math.max(-MAX_PITCH_RATE, Math.min(MAX_PITCH_RATE, pitchRate));
+        pitch += pitchRate;
+        pitch = Math.max(-MAX_PITCH_ANGLE, Math.min(MAX_PITCH_ANGLE, pitch));
+
+        // Auto-level: pitch slowly returns to 0 when no input
+        if (pitchInput === 0) {
+            pitch *= 0.997;
+            if (Math.abs(pitch) < 0.002) pitch = 0;
+        }
+
+        // Build quaternion from angles - this is THE orientation
+        playerAirplane.quaternion.copy(buildFlightQuaternion(heading, pitch));
     }
-    // Execute barrel roll (mouse click) - slower and elegant
-    else if (isRolling) {
+
+    // ===== VISUAL BANKING (on bankPivot, not flight path) =====
+    const bankPivot = playerAirplane.children[0];
+    if (bankPivot) {
+        // Bank proportional to yaw rate - tilts into the turn
+        const targetBank = -(yawRate / MAX_YAW_RATE) * MAX_BANK_ANGLE;
+        currentBankAngle += (targetBank - currentBankAngle) * 0.06;
+        if (Math.abs(currentBankAngle) < 0.001) currentBankAngle = 0;
+        bankPivot.rotation.z = currentBankAngle;
+    }
+
+    // ===== BARREL ROLL (visual only on bankPivot) =====
+    if (isRolling && bankPivot) {
         const rollSpeed = 0.045;
         const rollAmount = rollTargetDirection === 'left' ? rollSpeed : -rollSpeed;
-        playerAirplane.rotateZ(rollAmount);
         rollProgress += rollSpeed;
+        bankPivot.rotation.z = currentBankAngle + (rollTargetDirection === 'left' ? rollProgress : -rollProgress);
 
         if (rollProgress >= Math.PI * 2) {
             isRolling = false;
-            isStabilizing = true;
-        }
-    }
-    // Stabilize after flip or roll
-    else if (isStabilizing) {
-        const currentUp = new THREE.Vector3(0, 1, 0).applyQuaternion(playerAirplane.quaternion);
-        const targetUp = new THREE.Vector3(0, 1, 0);
-
-        const rotationAxis = new THREE.Vector3().crossVectors(currentUp, targetUp).normalize();
-        const angle = Math.acos(Math.max(-1, Math.min(1, currentUp.dot(targetUp))));
-
-        if (angle > 0.01) {
-            const stabilizationSpeed = 0.04;
-            const quaternion = new THREE.Quaternion().setFromAxisAngle(rotationAxis, angle * stabilizationSpeed);
-            playerAirplane.quaternion.multiplyQuaternions(quaternion, playerAirplane.quaternion);
-        } else {
-            isStabilizing = false;
-        }
-    } else {
-        // Check if we should start auto-balancing
-        const timeSinceLastTurn = Date.now() - lastTurnTime;
-        if (timeSinceLastTurn > 2000 && !autoBalanceActive && (Math.abs(currentRotationVelocity) < 0.001)) {
-            autoBalanceActive = true;
-        }
-
-        // Auto-balance if active
-        if (autoBalanceActive) {
-            const currentUp = new THREE.Vector3(0, 1, 0).applyQuaternion(playerAirplane.quaternion);
-            const targetUp = new THREE.Vector3(0, 1, 0);
-
-            const rotationAxis = new THREE.Vector3().crossVectors(currentUp, targetUp).normalize();
-            const angle = Math.acos(Math.max(-1, Math.min(1, currentUp.dot(targetUp))));
-
-            if (angle > 0.01) {
-                const stabilizationSpeed = 0.03;
-                const quaternion = new THREE.Quaternion().setFromAxisAngle(rotationAxis, angle * stabilizationSpeed);
-                playerAirplane.quaternion.multiplyQuaternions(quaternion, playerAirplane.quaternion);
-            } else {
-                autoBalanceActive = false;
-            }
-        }
-
-        // Normal pitch controls (W/S)
-        let pitchInput = 0;
-        if (keys['KeyW']) {
-            pitchInput = 1;
-            lastTurnTime = Date.now();
-            autoBalanceActive = false;
-        }
-        if (keys['KeyS']) {
-            pitchInput = -1;
-            lastTurnTime = Date.now();
-            autoBalanceActive = false;
-        }
-
-        // Apply pitch acceleration
-        currentPitchVelocity += pitchInput * pitchAcceleration;
-        currentPitchVelocity *= damping;
-        currentPitchVelocity = Math.max(-maxPitchSpeed, Math.min(maxPitchSpeed, currentPitchVelocity));
-
-        if (Math.abs(currentPitchVelocity) > 0.0005) {
-            playerAirplane.rotateX(currentPitchVelocity);
+            bankPivot.rotation.z = currentBankAngle; // Back to banking angle
         }
     }
 
