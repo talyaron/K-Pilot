@@ -26,16 +26,18 @@ let yawRate = 0;       // Current turn rate
 let pitchRate = 0;     // Current pitch rate
 
 // Flight tuning
-const YAW_ACCEL = 0.0008;
-const MAX_YAW_RATE = 0.022;
-const PITCH_ACCEL = 0.0005;
-const MAX_PITCH_RATE = 0.015;
+const YAW_ACCEL = 0.0014;
+const MAX_YAW_RATE = 0.034;
+const PITCH_ACCEL = 0.0008;
+const MAX_PITCH_RATE = 0.02;
 const FLIGHT_DAMPING = 0.96;
 const MAX_PITCH_ANGLE = Math.PI / 3.5; // ~51 degrees max pitch up/down
-const MAX_BANK_ANGLE = 0.35;           // ~20 degrees visual bank
+const MAX_BANK_ANGLE = 0.55;           // ~31 degrees visual bank
+const MAX_PITCH_TILT = 0.15;           // Visual nose tilt for combined input
 
 // Visual banking (applied to inner model, not flight path)
 let currentBankAngle = 0;
+let currentPitchTilt = 0; // Visual pitch tilt for combined turns
 
 // Speed
 let currentSpeed = 0.1;
@@ -43,14 +45,18 @@ let targetSpeed = 0.1;
 let speedBoostActive = false;
 let lastZKeyState = false;
 
-// Special maneuvers
-let isRolling = false;
-let rollProgress = 0;
-let rollTargetDirection: 'left' | 'right' | null = null;
+// Q flip (vertical U-turn via direct quaternion rotation)
 let isFlipping = false;
 let flipProgress = 0;
-let flipHeadingStart = 0;
 let lastQKeyState = false;
+
+// Dodge maneuvers (mouse click)
+let isDodging = false;
+let dodgeProgress = 0;
+let dodgeDirection = 1; // 1 = left, -1 = right
+let dodgeType = 0; // 0-7 different maneuvers
+const DODGE_DURATION = 35;
+const DODGE_TYPES = 8; // total number of maneuver types
 
 // Build quaternion from heading + pitch angles
 function buildFlightQuaternion(h: number, p: number): THREE.Quaternion {
@@ -260,6 +266,50 @@ function updateHUD() {
     }
 }
 
+// Draw a small plane icon on the radar at (x, y) facing angle, with given color
+function drawRadarPlane(x: number, y: number, angle: number, color: string, size: number) {
+    radarCtx.save();
+    radarCtx.translate(x, y);
+    radarCtx.rotate(angle);
+
+    // Plane body (triangle pointing up = forward)
+    radarCtx.fillStyle = color;
+    radarCtx.beginPath();
+    radarCtx.moveTo(0, -size * 1.4);       // Nose
+    radarCtx.lineTo(-size * 0.5, size * 0.6); // Left tail
+    radarCtx.lineTo(0, size * 0.2);          // Tail center
+    radarCtx.lineTo(size * 0.5, size * 0.6);  // Right tail
+    radarCtx.closePath();
+    radarCtx.fill();
+
+    // Wings
+    radarCtx.beginPath();
+    radarCtx.moveTo(-size * 1.2, size * 0.1);  // Left wing tip
+    radarCtx.lineTo(0, -size * 0.3);           // Wing root front
+    radarCtx.lineTo(size * 1.2, size * 0.1);   // Right wing tip
+    radarCtx.lineTo(0, size * 0.3);            // Wing root back
+    radarCtx.closePath();
+    radarCtx.fill();
+
+    // Direction indicator (small line ahead of nose)
+    radarCtx.strokeStyle = color;
+    radarCtx.lineWidth = 1.5;
+    radarCtx.globalAlpha = 0.6;
+    radarCtx.beginPath();
+    radarCtx.moveTo(0, -size * 1.5);
+    radarCtx.lineTo(0, -size * 2.5);
+    radarCtx.stroke();
+    radarCtx.globalAlpha = 1.0;
+
+    radarCtx.restore();
+}
+
+// Get heading angle from a THREE.Group's rotation (Y-axis rotation on radar)
+function getRadarHeading(group: THREE.Group): number {
+    const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(group.quaternion);
+    return Math.atan2(forward.x, forward.z); // Angle on XZ plane for radar
+}
+
 // Draw radar
 function updateRadar(otherPlayers: Map<string, THREE.Group>) {
     const currentTime = Date.now();
@@ -267,14 +317,8 @@ function updateRadar(otherPlayers: Map<string, THREE.Group>) {
     // Clear canvas
     radarCtx.clearRect(0, 0, radarCanvas.width, radarCanvas.height);
 
-    // Draw center dot (player)
-    radarCtx.fillStyle = '#00ffff';
-    radarCtx.beginPath();
-    radarCtx.arc(radarRadius, radarRadius, 4, 0, Math.PI * 2);
-    radarCtx.fill();
-
     // Draw range circles
-    radarCtx.strokeStyle = 'rgba(0, 255, 255, 0.2)';
+    radarCtx.strokeStyle = 'rgba(0, 255, 255, 0.15)';
     radarCtx.lineWidth = 1;
     for (let i = 1; i <= 3; i++) {
         radarCtx.beginPath();
@@ -282,10 +326,23 @@ function updateRadar(otherPlayers: Map<string, THREE.Group>) {
         radarCtx.stroke();
     }
 
-    // Update every 3 seconds (radar sweep)
+    // Cross hairs on radar
+    radarCtx.strokeStyle = 'rgba(0, 255, 255, 0.1)';
+    radarCtx.beginPath();
+    radarCtx.moveTo(radarRadius, 0);
+    radarCtx.lineTo(radarRadius, radarRadius * 2);
+    radarCtx.moveTo(0, radarRadius);
+    radarCtx.lineTo(radarRadius * 2, radarRadius);
+    radarCtx.stroke();
+
+    // Update sweep timer
     if (currentTime - lastRadarUpdate > 3000) {
         lastRadarUpdate = currentTime;
     }
+
+    // Draw LOCAL player at center with heading
+    const playerRadarAngle = getRadarHeading(playerAirplane);
+    drawRadarPlane(radarRadius, radarRadius, playerRadarAngle, '#00ffff', 6);
 
     // Draw other players within range
     otherPlayers.forEach((otherPlayer) => {
@@ -299,18 +356,18 @@ function updateRadar(otherPlayers: Map<string, THREE.Group>) {
             const radarX = radarRadius + dx * scale;
             const radarY = radarRadius + dz * scale;
 
-            // Draw enemy blip
-            radarCtx.fillStyle = '#ff0000';
-            radarCtx.beginPath();
-            radarCtx.arc(radarX, radarY, 3, 0, Math.PI * 2);
-            radarCtx.fill();
+            // Get enemy heading
+            const enemyAngle = getRadarHeading(otherPlayer);
 
-            // Add pulsing effect
+            // Draw enemy plane icon
+            drawRadarPlane(radarX, radarY, enemyAngle, '#ff3333', 5);
+
+            // Pulsing glow ring
             if ((currentTime % 1000) < 500) {
-                radarCtx.strokeStyle = 'rgba(255, 0, 0, 0.5)';
-                radarCtx.lineWidth = 2;
+                radarCtx.strokeStyle = 'rgba(255, 50, 50, 0.4)';
+                radarCtx.lineWidth = 1;
                 radarCtx.beginPath();
-                radarCtx.arc(radarX, radarY, 5, 0, Math.PI * 2);
+                radarCtx.arc(radarX, radarY, 8, 0, Math.PI * 2);
                 radarCtx.stroke();
             }
         }
@@ -401,13 +458,17 @@ function respawnPlayer() {
     currentSpeed = 0.1;
     targetSpeed = 0.1;
     speedBoostActive = false;
-    isRolling = false;
     isFlipping = false;
+    isDodging = false;
     currentBankAngle = 0;
+    currentPitchTilt = 0;
 
     // Reset bank pivot
     const bankPivot = playerAirplane.children[0];
-    if (bankPivot) bankPivot.rotation.z = 0;
+    if (bankPivot) {
+        bankPivot.rotation.z = 0;
+        bankPivot.rotation.x = 0;
+    }
 
     // Reset health
     playerHealth = maxHealth;
@@ -526,47 +587,43 @@ function animate() {
     if (Math.random() < 0.02) playEngineSound();
 
     // ===== SPECIAL MANEUVER TRIGGERS =====
-    // Q key: vertical U-turn (smooth 180-degree heading change)
-    if (keys['KeyQ'] && !lastQKeyState && !isFlipping && !isRolling) {
+    // Q key: vertical U-turn (real pitch loop via direct quaternion)
+    if (keys['KeyQ'] && !lastQKeyState && !isFlipping && !isDodging) {
         isFlipping = true;
         flipProgress = 0;
-        flipHeadingStart = heading;
+        // Set quaternion from current angles before starting direct rotation
+        playerAirplane.quaternion.copy(buildFlightQuaternion(heading, pitch));
         playRollSound();
     }
     lastQKeyState = !!keys['KeyQ'];
 
-    // Mouse click: barrel roll (visual only, doesn't change flight path)
+    // Mouse click: random dodge maneuver
     const currentRollDirection = getRollDirection();
-    if (currentRollDirection !== null && !isRolling && !isFlipping) {
-        isRolling = true;
-        rollTargetDirection = currentRollDirection;
-        rollProgress = 0;
+    if (currentRollDirection !== null && !isDodging && !isFlipping) {
+        isDodging = true;
+        dodgeProgress = 0;
+        dodgeDirection = currentRollDirection === 'left' ? 1 : -1;
+        dodgeType = Math.floor(Math.random() * DODGE_TYPES);
         resetRollDirection();
         playRollSound();
     }
 
     // ===== FLIGHT CONTROLS =====
     if (isFlipping) {
-        // Smooth U-turn: heading rotates 180 degrees, pitch arcs up and back
-        const flipSpeed = 0.025; // Elegant speed
+        // True vertical loop: rotate around local X axis directly
+        const flipSpeed = 0.035;
+        playerAirplane.rotateX(flipSpeed);
         flipProgress += flipSpeed;
-        const t = flipProgress / Math.PI; // 0 to 1
-
-        // Smoothly interpolate heading by PI
-        heading = flipHeadingStart + flipProgress;
-        // Arc the pitch: rises to ~45° at midpoint, then back to 0
-        pitch = Math.sin(t * Math.PI) * (Math.PI / 4);
-
-        // Build quaternion from angles
-        playerAirplane.quaternion.copy(buildFlightQuaternion(heading, pitch));
 
         if (flipProgress >= Math.PI) {
             isFlipping = false;
-            heading = flipHeadingStart + Math.PI; // Exact 180
+            // Extract where we ended up and level out
+            const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(playerAirplane.quaternion);
+            heading = Math.atan2(-forward.x, -forward.z);
             pitch = 0;
             yawRate = 0;
             pitchRate = 0;
-            playerAirplane.quaternion.copy(buildFlightQuaternion(heading, pitch));
+            playerAirplane.quaternion.copy(buildFlightQuaternion(heading, 0));
         }
     } else {
         // Normal flight: A/D for yaw, W/S for pitch
@@ -597,30 +654,107 @@ function animate() {
             if (Math.abs(pitch) < 0.002) pitch = 0;
         }
 
-        // Build quaternion from angles - this is THE orientation
+        // Build quaternion from angles
         playerAirplane.quaternion.copy(buildFlightQuaternion(heading, pitch));
     }
 
-    // ===== VISUAL BANKING (on bankPivot, not flight path) =====
+    // ===== VISUAL BANKING + PITCH TILT (on bankPivot) =====
     const bankPivot = playerAirplane.children[0];
     if (bankPivot) {
-        // Bank proportional to yaw rate - tilts into the turn
-        const targetBank = -(yawRate / MAX_YAW_RATE) * MAX_BANK_ANGLE;
-        currentBankAngle += (targetBank - currentBankAngle) * 0.06;
+        // A pressed → yawRate positive → bank right side up (positive Z)
+        const targetBank = (yawRate / MAX_YAW_RATE) * MAX_BANK_ANGLE;
+        currentBankAngle += (targetBank - currentBankAngle) * 0.08;
         if (Math.abs(currentBankAngle) < 0.001) currentBankAngle = 0;
         bankPivot.rotation.z = currentBankAngle;
+
+        // Visual pitch tilt: when climbing/diving during a turn, tilt nose up/down visually
+        const targetPitchTilt = (pitchRate / MAX_PITCH_RATE) * MAX_PITCH_TILT;
+        currentPitchTilt += (targetPitchTilt - currentPitchTilt) * 0.08;
+        if (Math.abs(currentPitchTilt) < 0.001) currentPitchTilt = 0;
+        bankPivot.rotation.x = currentPitchTilt;
     }
 
-    // ===== BARREL ROLL (visual only on bankPivot) =====
-    if (isRolling && bankPivot) {
-        const rollSpeed = 0.045;
-        const rollAmount = rollTargetDirection === 'left' ? rollSpeed : -rollSpeed;
-        rollProgress += rollSpeed;
-        bankPivot.rotation.z = currentBankAngle + (rollTargetDirection === 'left' ? rollProgress : -rollProgress);
+    // ===== DODGE MANEUVERS (mouse click) =====
+    if (isDodging) {
+        dodgeProgress++;
+        const t = dodgeProgress / DODGE_DURATION; // 0 to 1
+        const ease = Math.sin(t * Math.PI); // smooth in-out
+        const easeIn = Math.sin(t * Math.PI * 0.5); // smooth in
+        const easeOut = Math.cos(t * Math.PI * 0.5); // smooth out
 
-        if (rollProgress >= Math.PI * 2) {
-            isRolling = false;
-            bankPivot.rotation.z = currentBankAngle; // Back to banking angle
+        if (dodgeType === 0) {
+            // JINK: sharp sideslip snap
+            const sideOffset = new THREE.Vector3(dodgeDirection * 0.5 * ease, 0, 0);
+            sideOffset.applyQuaternion(playerAirplane.quaternion);
+            playerAirplane.position.add(sideOffset);
+            if (bankPivot) bankPivot.rotation.z = currentBankAngle + dodgeDirection * ease * 1.0;
+        } else if (dodgeType === 1) {
+            // BARREL ROLL: full 360 roll with lateral displacement
+            const rollAngle = dodgeDirection * t * Math.PI * 2;
+            const sideOffset = new THREE.Vector3(dodgeDirection * 0.25 * ease, Math.sin(t * Math.PI * 2) * 0.2, 0);
+            sideOffset.applyQuaternion(playerAirplane.quaternion);
+            playerAirplane.position.add(sideOffset);
+            if (bankPivot) bankPivot.rotation.z = currentBankAngle + rollAngle;
+        } else if (dodgeType === 2) {
+            // HIGH-G BREAK: sharp climbing turn
+            const climbOffset = new THREE.Vector3(dodgeDirection * 0.35 * ease, 0.35 * ease, -0.15 * ease);
+            climbOffset.applyQuaternion(playerAirplane.quaternion);
+            playerAirplane.position.add(climbOffset);
+            if (bankPivot) bankPivot.rotation.z = currentBankAngle + dodgeDirection * ease * 1.2;
+            if (bankPivot) bankPivot.rotation.x = currentPitchTilt - ease * 0.3;
+        } else if (dodgeType === 3) {
+            // SPLIT-S ESCAPE: half roll + dive
+            const halfRoll = dodgeDirection * easeIn * Math.PI;
+            const diveOffset = new THREE.Vector3(0, -0.4 * easeIn, 0);
+            diveOffset.applyQuaternion(playerAirplane.quaternion);
+            playerAirplane.position.add(diveOffset);
+            if (bankPivot) bankPivot.rotation.z = currentBankAngle + halfRoll;
+            if (bankPivot) bankPivot.rotation.x = currentPitchTilt + easeIn * 0.4;
+        } else if (dodgeType === 4) {
+            // CHANDELLE: climbing spiral turn
+            const spiralOffset = new THREE.Vector3(dodgeDirection * 0.3 * ease, 0.3 * easeOut, -0.1 * ease);
+            spiralOffset.applyQuaternion(playerAirplane.quaternion);
+            playerAirplane.position.add(spiralOffset);
+            if (bankPivot) bankPivot.rotation.z = currentBankAngle + dodgeDirection * ease * 0.9;
+            if (bankPivot) bankPivot.rotation.x = currentPitchTilt - ease * 0.2;
+        } else if (dodgeType === 5) {
+            // SCISSORS: quick zig-zag direction reversal
+            const zigzag = Math.sin(t * Math.PI * 3) * dodgeDirection;
+            const sideOffset = new THREE.Vector3(zigzag * 0.35, 0, 0);
+            sideOffset.applyQuaternion(playerAirplane.quaternion);
+            playerAirplane.position.add(sideOffset);
+            if (bankPivot) bankPivot.rotation.z = currentBankAngle + zigzag * 0.7;
+        } else if (dodgeType === 6) {
+            // CORKSCREW: tight spiral with forward displacement
+            const spiralAngle = t * Math.PI * 2.5 * dodgeDirection;
+            const radius = 0.3 * ease;
+            const corkscrewOffset = new THREE.Vector3(
+                Math.sin(spiralAngle) * radius,
+                Math.cos(spiralAngle) * radius,
+                -0.15 * ease
+            );
+            corkscrewOffset.applyQuaternion(playerAirplane.quaternion);
+            playerAirplane.position.add(corkscrewOffset);
+            if (bankPivot) bankPivot.rotation.z = currentBankAngle + spiralAngle;
+        } else {
+            // DISPLACEMENT ROLL: lateral snap roll with altitude change
+            const rollAngle = dodgeDirection * easeIn * Math.PI * 1.5;
+            const dispOffset = new THREE.Vector3(
+                dodgeDirection * 0.45 * ease,
+                0.2 * Math.sin(t * Math.PI),
+                0
+            );
+            dispOffset.applyQuaternion(playerAirplane.quaternion);
+            playerAirplane.position.add(dispOffset);
+            if (bankPivot) bankPivot.rotation.z = currentBankAngle + rollAngle;
+        }
+
+        if (dodgeProgress >= DODGE_DURATION) {
+            isDodging = false;
+            if (bankPivot) {
+                bankPivot.rotation.z = currentBankAngle;
+                bankPivot.rotation.x = currentPitchTilt;
+            }
         }
     }
 

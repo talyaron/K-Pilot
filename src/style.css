@@ -157,23 +157,4 @@ canvas {
     }
 }
 
-/* Radar grid lines */
-#radar-container::before {
-    content: '';
-    position: absolute;
-    top: 50%;
-    left: 0;
-    width: 100%;
-    height: 1px;
-    background: rgba(0, 255, 255, 0.3);
-}
-
-#radar-container::after {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 50%;
-    width: 1px;
-    height: 100%;
-    background: rgba(0, 255, 255, 0.3);
-}
+/* Grid lines now drawn on canvas */

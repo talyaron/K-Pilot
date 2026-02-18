@@ -37,6 +37,7 @@ export function initMultiplayer(playerAirplane: Group) {
     set(playerRef, {
         position: playerAirplane.position.toArray(),
         rotation: playerAirplane.rotation.toArray(),
+        quaternion: playerAirplane.quaternion.toArray(),
         health: 100,
         lastSeen: Date.now(),
     });
@@ -85,7 +86,11 @@ export function initMultiplayer(playerAirplane: Group) {
         const data = snapshot.val();
         const newPlayer = await loadAirplane();
         newPlayer.position.fromArray(data.position);
-        newPlayer.rotation.fromArray(data.rotation);
+        if (data.quaternion) {
+            newPlayer.quaternion.fromArray(data.quaternion);
+        } else {
+            newPlayer.rotation.fromArray(data.rotation);
+        }
         players[snapshot.key!] = newPlayer;
         scene.add(newPlayer);
     });
@@ -96,7 +101,11 @@ export function initMultiplayer(playerAirplane: Group) {
         const player = players[snapshot.key!];
         if (player) {
             player.position.fromArray(data.position);
-            player.rotation.fromArray(data.rotation);
+            if (data.quaternion) {
+                player.quaternion.fromArray(data.quaternion);
+            } else {
+                player.rotation.fromArray(data.rotation);
+            }
         }
     });
 
@@ -119,6 +128,7 @@ export function updatePlayerPosition(playerAirplane: Group, health?: number) {
         set(playerRef, {
             position: playerAirplane.position.toArray(),
             rotation: playerAirplane.rotation.toArray(),
+            quaternion: playerAirplane.quaternion.toArray(),
             health: health ?? 100,
             lastSeen: Date.now(),
         });
