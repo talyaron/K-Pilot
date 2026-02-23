@@ -75,8 +75,7 @@ export class FlightController {
       ? this.config.boostedSpeed
       : this.config.baseSpeed;
     this.flightState.currentSpeed +=
-      (this.flightState.targetSpeed - this.flightState.currentSpeed) *
-      this.config.speedLerpFactor;
+      (this.flightState.targetSpeed - this.flightState.currentSpeed) * this.config.speedLerpFactor;
   }
 
   private handleYaw(airplane: THREE.Group, input: InputManager): void {
@@ -90,8 +89,7 @@ export class FlightController {
       this.flightState.lastTurnTime = Date.now();
     }
 
-    this.flightState.currentRotationVelocity +=
-      rotationInput * this.config.rotationAcceleration;
+    this.flightState.currentRotationVelocity += rotationInput * this.config.rotationAcceleration;
     this.flightState.currentRotationVelocity *= this.config.damping;
     this.flightState.currentRotationVelocity = Math.max(
       -this.config.maxRotationSpeed,
@@ -155,8 +153,7 @@ export class FlightController {
   }
 
   private performRoll(airplane: THREE.Group): void {
-    const rollAmount =
-      this.rollState.rollTargetDirection === 'left' ? ROLL_SPEED : -ROLL_SPEED;
+    const rollAmount = this.rollState.rollTargetDirection === 'left' ? ROLL_SPEED : -ROLL_SPEED;
     airplane.rotateZ(rollAmount);
     this.rollState.rollProgress += ROLL_SPEED;
 
@@ -169,9 +166,7 @@ export class FlightController {
   private stabilize(airplane: THREE.Group, speed: number): void {
     const currentUp = new THREE.Vector3(0, 1, 0).applyQuaternion(airplane.quaternion);
     const targetUp = new THREE.Vector3(0, 1, 0);
-    const rotationAxis = new THREE.Vector3()
-      .crossVectors(currentUp, targetUp)
-      .normalize();
+    const rotationAxis = new THREE.Vector3().crossVectors(currentUp, targetUp).normalize();
     const angle = Math.acos(Math.max(-1, Math.min(1, currentUp.dot(targetUp))));
 
     if (angle > 0.01) {
@@ -211,8 +206,7 @@ export class FlightController {
       this.flightState.autoBalanceActive = false;
     }
 
-    this.flightState.currentPitchVelocity +=
-      pitchInput * this.config.pitchAcceleration;
+    this.flightState.currentPitchVelocity += pitchInput * this.config.pitchAcceleration;
     this.flightState.currentPitchVelocity *= this.config.damping;
     this.flightState.currentPitchVelocity = Math.max(
       -this.config.maxPitchSpeed,

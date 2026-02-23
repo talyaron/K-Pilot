@@ -23,8 +23,7 @@ export class CollisionDetector {
   private checkAsteroids(pos: Vector3): boolean {
     for (const asteroid of this.worldObjects.asteroids) {
       const distance = asteroid.position.distanceTo(pos);
-      const radius =
-        (asteroid.geometry as DodecahedronGeometry).parameters.radius || 5;
+      const radius = (asteroid.geometry as DodecahedronGeometry).parameters.radius || 5;
       if (distance < COLLISION_RADIUS + radius) return true;
     }
     return false;

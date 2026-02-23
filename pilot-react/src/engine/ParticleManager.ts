@@ -1,9 +1,6 @@
 import * as THREE from 'three';
 import type { IParticle } from '../types';
-import {
-  ENGINE_PARTICLE_SPAWN_CHANCE,
-  ENGINE_PARTICLE_LIFETIME,
-} from '../constants/gameConstants';
+import { ENGINE_PARTICLE_SPAWN_CHANCE, ENGINE_PARTICLE_LIFETIME } from '../constants/gameConstants';
 
 export class ParticleManager {
   private particles: IParticle[] = [];

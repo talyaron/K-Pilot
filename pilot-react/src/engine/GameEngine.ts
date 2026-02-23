@@ -12,8 +12,9 @@ import { CameraController } from './CameraController';
 import { AudioService } from '../services/AudioService';
 import { MultiplayerService } from '../services/MultiplayerService';
 import { loadAirplane } from '../services/PlaneLoaderService';
-import { FLIGHT_CONFIG } from '../constants/gameConstants';
+import Stats from 'stats.js';
 import {
+  FLIGHT_CONFIG,
   PLAYER_MAX_HEALTH,
   HIT_DAMAGE,
   RESPAWN_FRAMES,
@@ -38,6 +39,7 @@ export class GameEngine {
 
   private playerAirplane: THREE.Group | null = null;
   private animationFrameId: number = 0;
+  private stats: Stats;
 
   // Game state
   private health: number = PLAYER_MAX_HEALTH;
@@ -63,6 +65,11 @@ export class GameEngine {
     this.cameraController = new CameraController();
     this.audioService = new AudioService();
     this.multiplayerService = new MultiplayerService(this.sceneSetup.scene);
+
+    this.stats = new Stats();
+    this.stats.showPanel(0); // 0: fps, 1: ms, 2: mb, 3+: custom
+    container.appendChild(this.stats.dom);
+    this.stats.dom.style.position = 'absolute';
   }
 
   setRadarCanvas(canvas: HTMLCanvasElement): void {
@@ -101,6 +108,7 @@ export class GameEngine {
   }
 
   private animate = (): void => {
+    this.stats.begin();
     this.animationFrameId = requestAnimationFrame(this.animate);
 
     if (!this.playerAirplane) {
@@ -136,6 +144,8 @@ export class GameEngine {
 
     this.drawRadar();
     this.sceneSetup.render();
+
+    this.stats.end();
   };
 
   private updateFlight(): void {
@@ -326,5 +336,9 @@ export class GameEngine {
     this.multiplayerService.destroy();
     this.audioService.destroy();
     this.sceneSetup.destroy();
+
+    if (this.stats.dom.parentNode) {
+      this.stats.dom.parentNode.removeChild(this.stats.dom);
+    }
   }
 }

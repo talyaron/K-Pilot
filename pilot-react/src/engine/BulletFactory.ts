@@ -35,7 +35,7 @@ loader.load(
       if (!(child as Mesh).isMesh) return;
       const mesh = child as Mesh;
       const oldMat = Array.isArray(mesh.material) ? mesh.material[0] : mesh.material;
-      const color = (oldMat as any).color ?? new Color(0xcccccc);
+      const color = 'color' in oldMat ? (oldMat as MeshBasicMaterial).color : new Color(0xcccccc);
       mesh.material = new MeshBasicMaterial({ color });
     });
     rocketTemplate = model;
@@ -55,10 +55,7 @@ function buildFallbackRocket(): Group {
   body.rotation.x = Math.PI / 2;
   rocket.add(body);
 
-  const nose = new Mesh(
-    new ConeGeometry(0.18, 0.7, 8),
-    new MeshBasicMaterial({ color: 0xff3300 }),
-  );
+  const nose = new Mesh(new ConeGeometry(0.18, 0.7, 8), new MeshBasicMaterial({ color: 0xff3300 }));
   nose.rotation.x = -Math.PI / 2;
   nose.position.z = -1.45;
   rocket.add(nose);

@@ -18,7 +18,12 @@ export class BulletManager {
 
   constructor(private scene: THREE.Scene) {}
 
-  spawnBullet(position: THREE.Vector3, quaternion: THREE.Quaternion, shooterId: string, isRocket: boolean = false): void {
+  spawnBullet(
+    position: THREE.Vector3,
+    quaternion: THREE.Quaternion,
+    shooterId: string,
+    isRocket: boolean = false,
+  ): void {
     const mesh = isRocket ? createRocketMesh() : createBulletMesh();
 
     if (isRocket) {
@@ -31,9 +36,7 @@ export class BulletManager {
 
     const speed = isRocket ? ROCKET_SPEED : BULLET_SPEED;
     const lifetime = isRocket ? ROCKET_LIFETIME : BULLET_LIFETIME;
-    const velocity = new THREE.Vector3(0, 0, -1)
-      .applyQuaternion(quaternion)
-      .multiplyScalar(speed);
+    const velocity = new THREE.Vector3(0, 0, -1).applyQuaternion(quaternion).multiplyScalar(speed);
 
     this.bullets.push({ mesh, velocity, lifetime, shooterId, isRocket });
     this.scene.add(mesh);
@@ -103,15 +106,16 @@ export class BulletManager {
     trailMesh.position.x += (Math.random() - 0.5) * 0.12;
     trailMesh.position.y += (Math.random() - 0.5) * 0.12;
 
-    const trailVel = tailOffset.clone().multiplyScalar(0.04).add(
-      new THREE.Vector3(
-        (Math.random() - 0.5) * 0.025,
-        (Math.random() - 0.5) * 0.025,
-        0,
-      ),
-    );
+    const trailVel = tailOffset
+      .clone()
+      .multiplyScalar(0.04)
+      .add(new THREE.Vector3((Math.random() - 0.5) * 0.025, (Math.random() - 0.5) * 0.025, 0));
 
-    this.rocketTrails.push({ mesh: trailMesh, velocity: trailVel, lifetime: ROCKET_TRAIL_LIFETIME });
+    this.rocketTrails.push({
+      mesh: trailMesh,
+      velocity: trailVel,
+      lifetime: ROCKET_TRAIL_LIFETIME,
+    });
     this.scene.add(trailMesh);
   }
 
